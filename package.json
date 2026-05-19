@@ -1,0 +1,55 @@
+{
+  "name": "camo",
+  "private": false,
+  "version": "0.1.0",
+  "description": "A lightweight Tauri desktop pet assistant.",
+  "type": "module",
+  "bin": {
+    "camo": "./scripts/camo.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "start": "tauri dev",
+    "desktop": "tauri dev",
+    "package": "tauri build"
+  },
+  "files": [
+    "scripts/",
+    "src/",
+    "src-tauri/",
+    "public/",
+    "index.html",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.node.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wzhgeek/Camo.git"
+  },
+  "keywords": [
+    "tauri",
+    "desktop-pet",
+    "assistant",
+    "vue"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "pinia": "^3.0.4",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.1.10"
+  }
+}
