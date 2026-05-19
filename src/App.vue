@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { storeToRefs } from "pinia";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import CamoPet from "./components/CamoPet.vue";
 import ChatPanel from "./components/ChatPanel.vue";
 import { useCamoStore } from "./stores/camoStore";
@@ -8,20 +9,67 @@ import { useCamoStore } from "./stores/camoStore";
 const camo = useCamoStore();
 const { state, asset } = storeToRefs(camo);
 const panelOpen = ref(false);
+const scale = ref(1);
+const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 
 function handlePetClick() {
   panelOpen.value = !panelOpen.value;
   camo.transition({ type: "PET_CLICKED" });
   camo.returnToIdle(850);
 }
+
+function handleContextMenu(e: MouseEvent) {
+  contextMenu.value = { show: true, x: e.clientX, y: e.clientY };
+}
+
+function closeContextMenu() {
+  contextMenu.value.show = false;
+}
+
+async function exitApp() {
+  try {
+    await getCurrentWindow().close();
+  } catch {
+    // ignore in browser preview
+  }
+}
+
+function handleWheel(e: WheelEvent) {
+  if (e.deltaY < 0) {
+    scale.value = Math.min(2, +(scale.value + 0.05).toFixed(2));
+  } else {
+    scale.value = Math.max(0.5, +(scale.value - 0.05).toFixed(2));
+  }
+}
 </script>
 
 <template>
-  <main class="camo-workspace" :class="{ expanded: panelOpen }">
+  <main
+    class="camo-workspace"
+    :class="{ expanded: panelOpen }"
+    @contextmenu.prevent="handleContextMenu"
+    @click="closeContextMenu"
+  >
     <Transition name="panel">
       <ChatPanel v-if="panelOpen" />
     </Transition>
-    <CamoPet :state="state" :asset="asset" :panel-open="panelOpen" @click="handlePetClick" />
+    <CamoPet
+      :state="state"
+      :asset="asset"
+      :panel-open="panelOpen"
+      :scale="scale"
+      @click="handlePetClick"
+      @wheel="handleWheel"
+    />
+
+    <div
+      v-if="contextMenu.show"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      @click.stop
+    >
+      <button class="context-item danger" @click="exitApp">退出 Camo</button>
+    </div>
   </main>
 </template>
 
@@ -299,5 +347,51 @@ function handlePetClick() {
     width: calc(100vw - 28px);
     height: min(420px, calc(100vh - 214px));
   }
+}
+
+/* ---- Context Menu ---- */
+.context-menu {
+  position: fixed;
+  min-width: 120px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(71, 53, 93, 0.12);
+  box-shadow: 0 12px 36px rgba(53, 42, 70, 0.22);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 9999;
+  user-select: none;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #272230;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.context-item:hover {
+  background: rgba(127, 90, 240, 0.1);
+  color: #5f3dc0;
+}
+
+.context-item.danger {
+  color: #d92d20;
+}
+
+.context-item.danger:hover {
+  background: rgba(217, 45, 32, 0.08);
+  color: #b42318;
 }
 </style>
