@@ -1,25 +1,45 @@
 <script setup lang="ts">
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ref } from "vue";
 import type { CamoState } from "../core/camo/state";
 
-defineProps<{
+const props = defineProps<{
   state: CamoState;
   asset: string;
   panelOpen: boolean;
   scale: number;
+  offset: { x: number; y: number };
 }>();
 
 const emit = defineEmits<{
   click: [];
   wheel: [e: WheelEvent];
+  drag: [pos: { x: number; y: number }];
 }>();
 
-async function startWindowDrag() {
-  try {
-    await getCurrentWindow().startDragging();
-  } catch {
-    // ignore in browser preview
+const isTauri = !!((window as any).__TAURI_INTERNALS__);
+const dragging = ref(false);
+const dragStart = ref({ x: 0, y: 0 });
+
+async function onPointerDown(e: PointerEvent) {
+  if (isTauri) {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().startDragging();
+      return;
+    } catch {}
   }
+  dragging.value = true;
+  dragStart.value = { x: e.clientX - props.offset.x, y: e.clientY - props.offset.y };
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!dragging.value) return;
+  emit("drag", { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y });
+}
+
+function onPointerUp() {
+  dragging.value = false;
 }
 </script>
 
@@ -27,15 +47,18 @@ async function startWindowDrag() {
   <section
     class="pet-shell"
     :class="{ 'panel-open': panelOpen }"
-    :style="{ zoom: scale }"
+    :style="{ zoom: scale, transform: `translate(${offset.x}px, ${offset.y}px)` }"
     aria-label="Camo desktop pet"
-    @pointerdown="startWindowDrag"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
     @wheel.prevent="emit('wheel', $event)"
   >
     <button
       class="pet-button"
       type="button"
       :aria-label="`Camo is ${state}`"
+      @pointerdown.stop
       @dblclick="emit('click')"
     >
       <img class="pet-image" :src="asset" :alt="`Camo ${state}`" draggable="false" />

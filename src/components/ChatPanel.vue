@@ -1,14 +1,59 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
+import { marked } from "marked";
 import { useChatStore } from "../stores/chatStore";
 
+marked.setOptions({ breaks: true, gfm: true });
+
+const emit = defineEmits<{ close: []; drag: [pos: { x: number; y: number }] }>();
+
 const chat = useChatStore();
-const { messages, isResponding } = storeToRefs(chat);
+const { messages, isResponding, sessions, activeSessionId } = storeToRefs(chat);
 const draft = ref("");
 const listRef = ref<HTMLElement | null>(null);
+const showSessionList = ref(false);
+
+function newSession() {
+  chat.createSession();
+  showSessionList.value = false;
+}
+function switchTo(id: string) {
+  chat.switchSession(id);
+  showSessionList.value = false;
+}
+function deleteSess(id: string) {
+  chat.deleteSession(id);
+}
+function clearConversation() {
+  chat.clearMessages();
+}
+function closeDropdown() {
+  if (showSessionList.value) showSessionList.value = false;
+}
 
 const canSend = computed(() => draft.value.trim().length > 0 && !isResponding.value);
+
+function renderMd(text: string): string {
+  if (!text) return "";
+  return marked.parse(text, { async: false }) as string;
+}
+
+const dragging = ref(false);
+const dragStart = ref({ x: 0, y: 0 });
+const pos = ref({ x: 0, y: 0 });
+
+function onDragStart(e: PointerEvent) {
+  dragging.value = true;
+  dragStart.value = { x: e.clientX - pos.value.x, y: e.clientY - pos.value.y };
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+function onDragMove(e: PointerEvent) {
+  if (!dragging.value) return;
+  pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
+  emit("drag", pos.value);
+}
+function onDragEnd() { dragging.value = false; }
 
 async function submitMessage() {
   if (!canSend.value) return;
@@ -17,26 +62,51 @@ async function submitMessage() {
   await chat.sendMessage(content);
 }
 
-watch(
-  () => messages.value.length,
-  async () => {
-    await nextTick();
+function scrollToBottom() {
+  nextTick(() => {
     listRef.value?.scrollTo({ top: listRef.value.scrollHeight, behavior: "smooth" });
-  },
-);
+  });
+}
+
+watch(() => messages.value.length, scrollToBottom);
+watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
 </script>
 
 <template>
-  <aside class="chat-panel" aria-label="Camo chat panel">
-    <header class="chat-header">
-      <div>
-        <p class="eyebrow">Camo</p>
-        <h1>轻量助手</h1>
+  <aside class="chat-panel" :style="{ transform: `translate(${pos.x}px, ${pos.y}px)` }" @click="closeDropdown">
+    <header
+      class="chat-header"
+      @pointerdown="onDragStart"
+      @pointermove="onDragMove"
+      @pointerup="onDragEnd"
+    >
+      <p class="eyebrow">Camo</p>
+      <div class="header-right">
+        <span class="status" :class="{ active: isResponding }">
+          {{ isResponding ? "思考中" : "待机" }}
+        </span>
+        <button class="close-btn" @pointerdown.stop @click="emit('close')" aria-label="关闭">×</button>
       </div>
-      <span class="status" :class="{ active: isResponding }">
-        {{ isResponding ? "思考中" : "待机" }}
-      </span>
     </header>
+
+    <div class="session-bar">
+      <div class="session-selector" @click.stop="showSessionList = !showSessionList">
+        <span class="session-title">{{ sessions.find(s => s.id === activeSessionId)?.title || '新对话' }}</span>
+        <span class="arrow">▾</span>
+      </div>
+      <button class="sess-btn" @click="newSession" title="新建会话">＋</button>
+      <button class="sess-btn" @click="clearConversation" title="清除对话">🗑</button>
+      <div v-if="showSessionList" class="session-dropdown">
+        <div
+          v-for="s in sessions" :key="s.id"
+          class="session-item" :class="{ active: s.id === activeSessionId }"
+          @click="switchTo(s.id)"
+        >
+          <span class="item-title">{{ s.title }}</span>
+          <button v-if="sessions.length > 1" class="del-btn" @click.stop="deleteSess(s.id)" title="删除">×</button>
+        </div>
+      </div>
+    </div>
 
     <div ref="listRef" class="message-list">
       <article
@@ -45,7 +115,18 @@ watch(
         class="message"
         :class="message.role"
       >
-        <p>{{ message.content }}</p>
+        <div v-if="message.isThinking" class="thinking-block thinking-active">
+          <div class="thinking-header">
+            <span class="spinner"></span>
+            <span>思考中</span>
+          </div>
+          <div class="thinking-text" v-html="renderMd(message.thinking || '')"></div>
+        </div>
+        <details v-else-if="message.thinking" class="thinking-block">
+          <summary>思考过程</summary>
+          <div class="thinking-text" v-html="renderMd(message.thinking)"></div>
+        </details>
+        <div class="msg-content" v-html="renderMd(message.content)"></div>
       </article>
     </div>
 
@@ -56,7 +137,10 @@ watch(
         autocomplete="off"
         placeholder="问 Camo 一件事"
       />
-      <button type="submit" :disabled="!canSend" aria-label="Send message">发送</button>
+      <button v-if="isResponding" type="button" class="stop-btn" @click="chat.stopResponse()" aria-label="停止">
+        <span class="stop-icon"></span>
+      </button>
+      <button v-else type="submit" :disabled="!canSend" aria-label="Send message">发送</button>
     </form>
   </aside>
 </template>
