@@ -32,7 +32,6 @@ async function startWindowDrag() {
     @pointerdown="startWindowDrag"
     @wheel.prevent="emit('wheel', $event)"
   >
-    <div class="drag-zone" />
     <button
       class="pet-button"
       type="button"
