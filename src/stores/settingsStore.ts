@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import type { LLMConfig } from "../core/llm/types";
 import { defaultLLMConfig } from "../core/llm/types";
 import { dbAll, dbRun } from "../core/storage/database";
+import type { CamoTheme } from "../core/camo/assets";
 
 export interface WaterReminderConfig {
   enabled: boolean;
@@ -15,6 +16,7 @@ export interface CamoSettings {
   llm: LLMConfig;
   waterReminder: WaterReminderConfig;
   systemPrompt: string;
+  theme: CamoTheme;
 }
 
 const defaultSettings: CamoSettings = {
@@ -26,6 +28,7 @@ const defaultSettings: CamoSettings = {
     endTime: "22:00",
   },
   systemPrompt: "你是 Camo，一个简洁、温和的桌面个人助手。回答简短清楚，默认中文。",
+  theme: "grey",
 };
 
 function loadSettings(): CamoSettings {
@@ -38,6 +41,7 @@ function loadSettings(): CamoSettings {
         llm: map.llm ? JSON.parse(map.llm) : { ...defaultLLMConfig },
         waterReminder: map.waterReminder ? JSON.parse(map.waterReminder) : defaultSettings.waterReminder,
         systemPrompt: map.systemPrompt ?? defaultSettings.systemPrompt,
+        theme: (map.theme as CamoTheme) ?? "grey",
       };
     }
   } catch {}
@@ -53,6 +57,7 @@ function saveSettings(val: CamoSettings) {
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["llm", JSON.stringify(val.llm)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["waterReminder", JSON.stringify(val.waterReminder)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["systemPrompt", val.systemPrompt]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["theme", val.theme]);
   } catch {
     localStorage.setItem("camo.settings", JSON.stringify(val));
   }
@@ -77,5 +82,9 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value.systemPrompt = prompt;
   }
 
-  return { settings, updateLLM, updateWaterReminder, updateSystemPrompt };
+  function updateTheme(theme: CamoTheme) {
+    settings.value.theme = theme;
+  }
+
+  return { settings, updateLLM, updateWaterReminder, updateSystemPrompt, updateTheme };
 });

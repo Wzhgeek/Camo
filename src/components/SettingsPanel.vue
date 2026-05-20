@@ -8,7 +8,7 @@ const props = defineProps<{ petSide?: "left" | "right" }>();
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 
-const tab = ref<"llm" | "prompt" | "about">("llm");
+const tab = ref<"llm" | "prompt" | "appearance" | "about">("llm");
 const provider = ref(settings.value.llm.provider);
 const baseUrl = ref(settings.value.llm.baseUrl);
 const apiKey = ref(settings.value.llm.apiKey);
@@ -85,6 +85,7 @@ function onDragEnd() { dragging.value = false; }
     <div class="tabs">
       <button :class="{ active: tab === 'llm' }" @click="tab = 'llm'">LLM</button>
       <button :class="{ active: tab === 'prompt' }" @click="tab = 'prompt'">提示词</button>
+      <button :class="{ active: tab === 'appearance' }" @click="tab = 'appearance'">外观</button>
       <button :class="{ active: tab === 'about' }" @click="tab = 'about'">关于</button>
     </div>
 
@@ -114,6 +115,28 @@ function onDragEnd() { dragging.value = false; }
       <div v-show="tab === 'prompt'" class="tab-content">
         <p class="hint">开场系统提示词，定义 Camo 的人格和行为</p>
         <textarea v-model="systemPrompt" rows="6" class="prompt-area"></textarea>
+      </div>
+
+      <div v-show="tab === 'appearance'" class="tab-content">
+        <p class="hint">选择桌宠配色主题</p>
+        <div class="theme-row">
+          <button
+            class="theme-btn"
+            :class="{ selected: settings.theme === 'grey' }"
+            @click="store.updateTheme('grey')"
+          >
+            <img src="/camo/grey/camo_idle.png" class="theme-preview" />
+            <span>灰色</span>
+          </button>
+          <button
+            class="theme-btn"
+            :class="{ selected: settings.theme === 'perple' }"
+            @click="store.updateTheme('perple')"
+          >
+            <img src="/camo/perple/camo_idle.png" class="theme-preview" />
+            <span>紫色</span>
+          </button>
+        </div>
       </div>
 
       <div v-show="tab === 'about'" class="tab-content about">
@@ -194,6 +217,18 @@ function onDragEnd() { dragging.value = false; }
 }
 .about { color: #555; }
 .about p { margin: 3px 0; font-size: 11px; }
+.theme-row {
+  display: flex; gap: 12px; justify-content: center; padding: 8px 0;
+}
+.theme-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 6px 10px; border: 2px solid #ddd; border-radius: 8px;
+  background: #fafafa; cursor: pointer; font-size: 10px; color: #555;
+  transition: all 0.15s;
+}
+.theme-btn:hover { border-color: #7c3aed; }
+.theme-btn.selected { border-color: #7c3aed; background: rgba(124,58,237,0.06); color: #7c3aed; }
+.theme-preview { width: 48px; height: 48px; object-fit: contain; }
 .footer {
   display: flex; align-items: center; justify-content: flex-end;
   gap: 6px; padding: 5px 8px; border-top: 1px solid #eee;
