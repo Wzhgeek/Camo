@@ -21,8 +21,8 @@ const { llmPhase } = storeToRefs(chatStore);
 const panelOpen = ref(false);
 const settingsOpen = ref(false);
 const reminderPanelOpen = ref(false);
-const scale = ref(1);
-const petOffset = ref({ x: 0, y: 0 });
+const scale = ref(settingsStore.settings.layout.scale);
+const petOffset = ref({ x: settingsStore.settings.layout.offsetX, y: settingsStore.settings.layout.offsetY });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 
 const petSide = computed<"left" | "right">(() => {
@@ -94,10 +94,12 @@ function handlePetClick() {
 
 function handlePetDrag(pos: { x: number; y: number }) {
   petOffset.value = pos;
+  settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
 }
 
 function handleChatDrag(pos: { x: number; y: number }) {
   petOffset.value = pos;
+  settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
 }
 
 function handleContextMenu(e: MouseEvent) {
@@ -138,6 +140,7 @@ function handleWheel(e: WheelEvent) {
   } else {
     scale.value = Math.max(0.5, +(scale.value - 0.05).toFixed(2));
   }
+  settingsStore.updateLayout({ scale: scale.value });
 }
 </script>
 

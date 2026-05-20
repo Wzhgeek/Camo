@@ -8,7 +8,7 @@ const props = defineProps<{ petSide?: "left" | "right" }>();
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 
-const tab = ref<"llm" | "prompt" | "appearance" | "about">("llm");
+const tab = ref<"llm" | "prompt" | "reminder" | "appearance" | "about">("llm");
 const provider = ref(settings.value.llm.provider);
 const baseUrl = ref(settings.value.llm.baseUrl);
 const apiKey = ref(settings.value.llm.apiKey);
@@ -85,6 +85,7 @@ function onDragEnd() { dragging.value = false; }
     <div class="tabs">
       <button :class="{ active: tab === 'llm' }" @click="tab = 'llm'">LLM</button>
       <button :class="{ active: tab === 'prompt' }" @click="tab = 'prompt'">提示词</button>
+      <button :class="{ active: tab === 'reminder' }" @click="tab = 'reminder'">提醒</button>
       <button :class="{ active: tab === 'appearance' }" @click="tab = 'appearance'">外观</button>
       <button :class="{ active: tab === 'about' }" @click="tab = 'about'">关于</button>
     </div>
@@ -117,6 +118,34 @@ function onDragEnd() { dragging.value = false; }
         <textarea v-model="systemPrompt" rows="6" class="prompt-area"></textarea>
       </div>
 
+      <div v-show="tab === 'reminder'" class="tab-content">
+        <div class="row">
+          <label>喝水提醒</label>
+          <input type="checkbox" v-model="settings.waterReminder.enabled" @change="store.updateWaterReminder({ enabled: settings.waterReminder.enabled })" />
+        </div>
+        <template v-if="settings.waterReminder.enabled">
+          <div class="row">
+            <label>间隔(分钟)</label>
+            <input type="number" min="10" max="240"
+              :value="settings.waterReminder.intervalMinutes"
+              @change="store.updateWaterReminder({ intervalMinutes: +($event.target as HTMLInputElement).value })"
+            />
+          </div>
+          <div class="row">
+            <label>开始时间</label>
+            <input type="time" :value="settings.waterReminder.startTime"
+              @change="store.updateWaterReminder({ startTime: ($event.target as HTMLInputElement).value })"
+            />
+          </div>
+          <div class="row">
+            <label>结束时间</label>
+            <input type="time" :value="settings.waterReminder.endTime"
+              @change="store.updateWaterReminder({ endTime: ($event.target as HTMLInputElement).value })"
+            />
+          </div>
+        </template>
+      </div>
+
       <div v-show="tab === 'appearance'" class="tab-content">
         <p class="hint">选择桌宠配色主题</p>
         <div class="theme-row">
@@ -142,7 +171,7 @@ function onDragEnd() { dragging.value = false; }
       <div v-show="tab === 'about'" class="tab-content about">
         <p><b>Camo</b> — 轻量桌宠助手</p>
         <p>Tauri 2 + Vue 3 + TypeScript</p>
-        <p style="opacity:0.6;font-size:10px">v0.1.0</p>
+        <p style="opacity:0.6;font-size:10px">v0.2.0</p>
       </div>
     </div>
 

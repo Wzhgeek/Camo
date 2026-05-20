@@ -12,11 +12,18 @@ export interface WaterReminderConfig {
   endTime: string;
 }
 
+export interface LayoutConfig {
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+}
+
 export interface CamoSettings {
   llm: LLMConfig;
   waterReminder: WaterReminderConfig;
   systemPrompt: string;
   theme: CamoTheme;
+  layout: LayoutConfig;
 }
 
 const defaultSettings: CamoSettings = {
@@ -29,14 +36,16 @@ const defaultSettings: CamoSettings = {
   },
   systemPrompt: "你是 Camo，一个简洁、温和的桌面个人助手。回答简短清楚，默认中文。",
   theme: "grey",
+  layout: { offsetX: 0, offsetY: 0, scale: 1 },
 };
 
-function normalizeSettings(settings: CamoSettings): CamoSettings {
+function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
   return {
     ...defaultSettings,
     ...settings,
-    llm: { ...defaultLLMConfig, ...settings.llm },
-    waterReminder: { ...defaultSettings.waterReminder, ...settings.waterReminder },
+    llm: { ...defaultLLMConfig, ...(settings.llm ?? {}) },
+    waterReminder: { ...defaultSettings.waterReminder, ...(settings.waterReminder ?? {}) },
+    layout: { ...defaultSettings.layout, ...(settings.layout ?? {}) },
     theme: isCamoTheme(settings.theme) ? settings.theme : "grey",
   };
 }
@@ -52,6 +61,7 @@ function loadSettings(): CamoSettings {
         waterReminder: map.waterReminder ? JSON.parse(map.waterReminder) : defaultSettings.waterReminder,
         systemPrompt: map.systemPrompt ?? defaultSettings.systemPrompt,
         theme: (map.theme as CamoTheme) ?? "grey",
+        layout: map.layout ? JSON.parse(map.layout) : defaultSettings.layout,
       });
     }
   } catch {}
@@ -68,6 +78,7 @@ function saveSettings(val: CamoSettings) {
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["waterReminder", JSON.stringify(val.waterReminder)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["systemPrompt", val.systemPrompt]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["theme", val.theme]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["layout", JSON.stringify(val.layout)]);
   } catch {
     localStorage.setItem("camo.settings", JSON.stringify(val));
   }
@@ -96,5 +107,9 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value.theme = theme;
   }
 
-  return { settings, updateLLM, updateWaterReminder, updateSystemPrompt, updateTheme };
+  function updateLayout(layout: Partial<LayoutConfig>) {
+    settings.value.layout = { ...settings.value.layout, ...layout };
+  }
+
+  return { settings, updateLLM, updateWaterReminder, updateSystemPrompt, updateTheme, updateLayout };
 });
