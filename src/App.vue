@@ -99,11 +99,6 @@ function handlePetDrag(pos: { x: number; y: number }) {
   settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
 }
 
-function handleChatDrag(pos: { x: number; y: number }) {
-  petOffset.value = pos;
-  settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
-}
-
 function handleContextMenu(e: MouseEvent) {
   const menuW = 100;
   const menuH = 96;
@@ -156,7 +151,6 @@ function handleWheel(e: WheelEvent) {
     <ChatPanel
       v-show="panelOpen"
       @close="panelOpen = false"
-      @drag="handleChatDrag"
     />
     <CamoPet
       :state="state"
