@@ -20,13 +20,12 @@ const isTauri = !!((window as any).__TAURI_INTERNALS__);
 const dragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
 
-async function onPointerDown(e: PointerEvent) {
+function onPointerDown(e: PointerEvent) {
   if (isTauri) {
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().startDragging();
-      return;
-    } catch {}
+    import("@tauri-apps/api/window")
+      .then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
+      .catch(() => {});
+    return;
   }
   dragging.value = true;
   dragStart.value = { x: e.clientX - props.offset.x, y: e.clientY - props.offset.y };
@@ -58,7 +57,6 @@ function onPointerUp() {
       class="pet-button"
       type="button"
       :aria-label="`Camo is ${state}`"
-      @pointerdown.stop
       @dblclick="emit('click')"
     >
       <img class="pet-image" :src="asset" :alt="`Camo ${state}`" draggable="false" />

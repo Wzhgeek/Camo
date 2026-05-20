@@ -47,14 +47,17 @@ onUnmounted(() => scheduler.stop());
 watch(llmPhase, (phase) => {
   if (phase === "thinking") camo.transition({ type: "USER_SENT_MESSAGE" });
   else if (phase === "answering") camo.transition({ type: "LLM_STREAM_START" });
-  else if (phase === "done") camo.transition({ type: "TASK_DONE" });
+  else if (phase === "done") {
+    camo.transition({ type: "TASK_DONE" });
+    camo.returnToIdle(1500);
+  }
   else camo.returnToIdle(700);
 });
 
 function handlePetClick() {
   panelOpen.value = !panelOpen.value;
   camo.transition({ type: "PET_CLICKED" });
-  camo.returnToIdle(850);
+  camo.returnToIdle(400);
 }
 
 function handlePetDrag(pos: { x: number; y: number }) {
