@@ -88,9 +88,9 @@ html[data-camo-bubble-style="soft"] .reminder-bubble {
 
 .bubble-title {
   margin: 0 0 14px;
-  font-size: 14px;
+  font-size: var(--camo-font-size);
   font-weight: 600;
-  color: var(--camo-text);
+  color: var(--camo-bubble-text);
 }
 
 .bubble-actions {
@@ -104,7 +104,7 @@ html[data-camo-bubble-style="soft"] .reminder-bubble {
   border: 1px solid rgba(79, 58, 105, 0.14);
   border-radius: 8px;
   background: var(--camo-surface);
-  color: var(--camo-text);
+  color: var(--camo-bubble-text);
   font-size: 12px;
   font-weight: 600;
 }

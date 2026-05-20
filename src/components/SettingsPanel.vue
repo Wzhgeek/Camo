@@ -40,6 +40,12 @@ const panelStyle = computed(() => {
   return { right: '180px', top: '50%', transform: 'translateY(-50%)', left: 'auto' };
 });
 
+const FONT_SIZE_PRESET_MAP: Record<string, number> = { small: 12, medium: 14, large: 16 };
+
+watch(() => settings.value.appearance.fontSizePreset, (preset) => {
+  store.updateAppearance({ fontSizePx: FONT_SIZE_PRESET_MAP[preset] ?? 14 });
+});
+
 watch(() => settings.value.llm, (llm) => {
   provider.value = llm.provider;
   baseUrl.value = llm.baseUrl;
@@ -205,7 +211,7 @@ function onDragEnd() { dragging.value = false; }
             </select>
           </div>
           <div class="row">
-            <label>字号</label>
+            <label>内容字号</label>
             <select v-model="settings.appearance.fontSizePreset">
               <option value="small">小</option>
               <option value="medium">中</option>
@@ -214,8 +220,10 @@ function onDragEnd() { dragging.value = false; }
             <input v-model.number="settings.appearance.fontSizePx" type="number" min="11" max="20" />
           </div>
           <div class="row">
-            <label>文字色</label>
-            <input v-model="settings.appearance.textColor" type="color" />
+            <label>面板字号</label>
+            <select v-model.number="settings.appearance.uiFontSizePx">
+              <option v-for="s in [9,10,11,12,13,14,15,16,17,18,20,22,24,26]" :key="s" :value="s">{{ s }}px</option>
+            </select>
           </div>
         </div>
 
@@ -357,7 +365,7 @@ function onDragEnd() { dragging.value = false; }
   border-radius: 10px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.18);
   z-index: 9999;
-  font-size: 11px;
+  font-size: var(--camo-ui-font-size);
   display: flex;
   flex-direction: column;
 }
@@ -388,9 +396,9 @@ function onDragEnd() { dragging.value = false; }
   border-radius: 10px 10px 0 0;
 }
 .drag-handle:active { cursor: grabbing; }
-.title { font-weight: 600; font-size: 11px; }
+.title { font-weight: 600; }
 .close-btn {
-  background: none; border: none; font-size: 14px;
+  background: none; border: none; font-size: 1.2em;
   cursor: pointer; color: #666; line-height: 1;
 }
 .tabs {
@@ -398,7 +406,7 @@ function onDragEnd() { dragging.value = false; }
 }
 .tabs button {
   flex: 1; padding: 4px 0; border: none;
-  background: none; font-size: 10px; cursor: pointer;
+  background: none; font-size: 0.9em; cursor: pointer;
   color: #666; transition: all 0.15s;
 }
 .tabs button.active {
@@ -407,31 +415,31 @@ function onDragEnd() { dragging.value = false; }
 .tab-body { flex: 1; padding: 8px; overflow-y: auto; }
 .tab-content { display: flex; flex-direction: column; gap: 6px; }
 .row { display: flex; align-items: center; gap: 6px; }
-.row label { min-width: 52px; font-size: 10px; color: var(--camo-muted); }
+.row label { min-width: 52px; font-size: 0.9em; color: var(--camo-muted); }
 .row select, .row input {
   flex: 1; padding: 3px 5px; border: 1px solid #ddd;
-  border-radius: 4px; font-size: 10px; outline: none;
+  border-radius: 4px; font-size: 0.9em; outline: none;
   min-width: 0;
 }
 .row input[type="checkbox"] { flex: none; width: 13px; height: 13px; }
 .row input[type="color"] { flex: 0 0 44px; height: 24px; padding: 1px; }
 .row input[type="range"] { min-width: 80px; }
-.empty { color: #999; font-size: 10px; text-align: center; padding: 12px 0; }
-.hint { margin: 0 0 4px; font-size: 10px; color: #888; }
+.empty { color: #999; font-size: 0.9em; text-align: center; padding: 12px 0; }
+.hint { margin: 0 0 4px; font-size: 0.9em; color: #888; }
 .prompt-area {
   width: 100%; border: 1px solid #ddd; border-radius: 4px;
-  font-size: 10px; padding: 5px; resize: vertical; outline: none;
+  font-size: 0.9em; padding: 5px; resize: vertical; outline: none;
   font-family: inherit;
 }
 .about { color: #555; }
-.about p { margin: 3px 0; font-size: 11px; }
+.about p { margin: 3px 0; }
 .theme-row {
   display: flex; gap: 12px; justify-content: center; padding: 8px 0;
 }
 .theme-btn {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 6px 10px; border: 2px solid #ddd; border-radius: 8px;
-  background: #fafafa; cursor: pointer; font-size: 10px; color: #555;
+  background: #fafafa; cursor: pointer; font-size: 0.9em; color: #555;
   transition: all 0.15s;
 }
 .theme-btn:hover { border-color: #7c3aed; }
@@ -448,14 +456,14 @@ function onDragEnd() { dragging.value = false; }
 }
 .settings-group h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 1em;
   color: var(--camo-text);
 }
 .check-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 0.9em;
   color: var(--camo-text);
 }
 .check-row input { width: 13px; height: 13px; }
@@ -463,21 +471,21 @@ function onDragEnd() { dragging.value = false; }
 .unit {
   flex: 0 0 auto;
   min-width: 32px;
-  font-size: 10px;
+  font-size: 0.9em;
   color: var(--camo-muted);
 }
 .error-tip {
   margin: 0;
-  font-size: 10px;
+  font-size: 0.9em;
   color: #dc2626;
 }
 .footer {
   display: flex; align-items: center; justify-content: flex-end;
   gap: 6px; padding: 5px 8px; border-top: 1px solid #eee;
 }
-.saved-tip { font-size: 10px; color: #22c55e; margin-right: auto; }
+.saved-tip { font-size: 0.9em; color: #22c55e; margin-right: auto; }
 .btn {
-  padding: 3px 10px; border-radius: 4px; font-size: 10px;
+  padding: 3px 10px; border-radius: 4px; font-size: 0.9em;
   border: 1px solid #ddd; cursor: pointer;
 }
 .btn.save { background: #7c3aed; color: #fff; border-color: #7c3aed; }

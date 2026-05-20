@@ -271,7 +271,7 @@ function onDragEnd() { dragging.value = false; }
   border-radius: 10px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.18);
   z-index: 9999;
-  font-size: 11px;
+  font-size: var(--camo-ui-font-size);
   display: flex;
   flex-direction: column;
 }
@@ -302,9 +302,9 @@ function onDragEnd() { dragging.value = false; }
   border-radius: 10px 10px 0 0;
 }
 .drag-handle:active { cursor: grabbing; }
-.title { font-weight: 600; font-size: 11px; }
+.title { font-weight: 600; }
 .close-btn {
-  background: none; border: none; font-size: 14px;
+  background: none; border: none; font-size: 1.2em;
   cursor: pointer; color: #666; line-height: 1;
 }
 .panel-body {
@@ -318,7 +318,7 @@ function onDragEnd() { dragging.value = false; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 1em;
   font-weight: 600;
   color: #4a3d5c;
   margin-bottom: 6px;
@@ -340,10 +340,10 @@ function onDragEnd() { dragging.value = false; }
   margin-bottom: 5px;
 }
 .water-row:last-child { margin-bottom: 0; }
-.water-label { font-size: 11px; font-weight: 600; color: #5b21b6; margin-right: 2px; }
+.water-label { font-size: 1em; font-weight: 600; color: #5b21b6; margin-right: 2px; }
 .water-cd {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 0.9em;
   color: #7c3aed;
   font-weight: 600;
   white-space: nowrap;
@@ -358,18 +358,18 @@ function onDragEnd() { dragging.value = false; }
   gap: 6px;
   margin-bottom: 4px;
 }
-.row label { min-width: 36px; font-size: 10px; color: var(--camo-muted); }
+.row label { min-width: 36px; font-size: 0.9em; color: var(--camo-muted); }
 .row input, .row select {
   flex: 1; padding: 3px 5px; border: 1px solid #ddd;
-  border-radius: 4px; font-size: 10px; outline: none;
+  border-radius: 4px; font-size: 0.9em; outline: none;
 }
 .row input[type="checkbox"] { flex: none; width: 13px; height: 13px; }
 .num-input { width: 48px !important; flex: none !important; }
 .time-input { width: 72px !important; flex: none !important; }
-.unit { font-size: 10px; color: var(--camo-muted); }
+.unit { font-size: 0.9em; color: var(--camo-muted); }
 .add-btn {
   background: none; border: 1px solid #ddd; border-radius: 4px;
-  font-size: 10px; cursor: pointer; padding: 2px 6px; color: #7c3aed;
+  font-size: 0.9em; cursor: pointer; padding: 2px 6px; color: #7c3aed;
 }
 .add-btn:hover { background: rgba(124,58,237,0.06); }
 .create-form {
@@ -382,20 +382,20 @@ function onDragEnd() { dragging.value = false; }
 .confirm-btn {
   width: 100%; margin-top: 6px; padding: 4px;
   background: #7c3aed; color: #fff; border: none;
-  border-radius: 4px; font-size: 10px; cursor: pointer;
+  border-radius: 4px; font-size: 0.9em; cursor: pointer;
 }
 .confirm-btn:hover { background: #6d28d9; }
-.empty { color: #999; font-size: 10px; text-align: center; padding: 12px 0; }
+.empty { color: #999; font-size: 0.9em; text-align: center; padding: 12px 0; }
 .reminder-row {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 0; border-bottom: 1px solid #f5f5f5;
 }
 .reminder-info { flex: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
-.r-title { font-size: 11px; color: var(--camo-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.r-meta { font-size: 9px; color: #888; }
+.r-title { font-size: 1em; color: var(--camo-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-meta { font-size: 0.82em; color: #888; }
 .countdown { color: #7c3aed; font-weight: 600; }
 .del-btn {
   background: none; border: none; color: #d92d20;
-  cursor: pointer; font-size: 12px; padding: 0 3px;
+  cursor: pointer; font-size: 1.1em; padding: 0 3px;
 }
 </style>

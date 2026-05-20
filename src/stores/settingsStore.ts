@@ -38,7 +38,7 @@ export interface AppearanceConfig {
   fontFamily: string;
   fontSizePreset: FontSizePreset;
   fontSizePx: number;
-  textColor: string;
+  uiFontSizePx: number;
   darkMode: DarkModePreference;
   darkStartTime: string;
   darkEndTime: string;
@@ -99,7 +99,7 @@ const defaultSettings: CamoSettings = {
     fontFamily: "system",
     fontSizePreset: "medium",
     fontSizePx: 14,
-    textColor: "#272230",
+    uiFontSizePx: 14,
     darkMode: "auto",
     darkStartTime: "20:00",
     darkEndTime: "07:00",

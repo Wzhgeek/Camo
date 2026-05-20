@@ -573,7 +573,7 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
 .thinking-text {
   margin: 2px 0 0;
   font-size: 10px;
-  color: #666;
+  color: inherit;
   max-height: 120px;
   overflow-y: auto;
   line-height: 1.4;
@@ -623,9 +623,15 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
 }
 .message.assistant {
   align-self: flex-start;
-  color: var(--camo-text);
+  color: var(--camo-chat-text);
   background: color-mix(in srgb, var(--camo-surface-strong) 88%, var(--camo-primary) 12%);
   border-bottom-left-radius: 5px;
+}
+.message.assistant .msg-content,
+.message.assistant .msg-content *,
+.message.assistant .thinking-text,
+.message.assistant .thinking-text * {
+  color: inherit;
 }
 .message.user {
   align-self: flex-end;
@@ -722,7 +728,7 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: var(--camo-text);
+  color: var(--camo-menu-text);
   font-size: 11px;
   font-weight: 500;
   text-align: left;
@@ -730,7 +736,7 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
   white-space: nowrap;
   line-height: 1.6;
 }
-.context-item:hover { background: rgba(127,90,240,0.1); color: #5f3dc0; }
+.context-item:hover { background: rgba(127,90,240,0.1); color: var(--camo-menu-text); }
 .context-item.danger { color: #d92d20; }
 .context-item.danger:hover { background: rgba(217,45,32,0.08); color: #b42318; }
 </style>

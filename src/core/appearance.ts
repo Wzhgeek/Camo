@@ -6,11 +6,6 @@ const FONT_STACK: Record<string, string> = {
   mono: "\"SFMono-Regular\", Consolas, \"Liberation Mono\", monospace",
 };
 
-const FONT_SIZE_MAP = {
-  small: 12,
-  medium: 14,
-  large: 16,
-} as const;
 
 export function resolveDarkMode(appearance: AppearanceConfig): "light" | "dark" {
   if (appearance.darkMode === "light" || appearance.darkMode === "dark") return appearance.darkMode;
@@ -32,16 +27,17 @@ export function darkModeLabel(mode: DarkModePreference): string {
 export function applyAppearance(appearance: AppearanceConfig) {
   const root = document.documentElement;
   const activeTheme = resolveDarkMode(appearance);
-  const fontSize = appearance.fontSizePreset === "medium"
-    ? appearance.fontSizePx
-    : FONT_SIZE_MAP[appearance.fontSizePreset];
+  const fontSize = appearance.fontSizePx;
 
   root.dataset.camoTheme = activeTheme;
   root.dataset.camoStatusPreset = appearance.statusColorPreset;
   root.dataset.camoBubbleStyle = appearance.bubbleStyle;
   root.style.setProperty("--camo-font-family", FONT_STACK[appearance.fontFamily] ?? FONT_STACK.system);
   root.style.setProperty("--camo-font-size", `${fontSize}px`);
-  root.style.setProperty("--camo-text", appearance.textColor);
+  root.style.setProperty("--camo-ui-font-size", `${appearance.uiFontSizePx ?? 11}px`);
+  root.style.removeProperty("--camo-text");
+  root.style.removeProperty("--camo-chat-text");
+  root.style.removeProperty("--camo-menu-text");
   root.style.setProperty("--camo-panel-opacity", String(appearance.panelOpacity));
   root.style.setProperty("--camo-bubble-opacity", String(appearance.bubbleOpacity));
   root.style.setProperty("--camo-bubble-opacity-pct", `${Math.round(appearance.bubbleOpacity * 100)}%`);
