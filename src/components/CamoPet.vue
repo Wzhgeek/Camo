@@ -11,6 +11,8 @@ const props = defineProps<{
   panelOpen: boolean;
   scale: number;
   offset: { x: number; y: number };
+  locked?: boolean;
+  statusStyle?: "dot" | "pill" | "hidden";
 }>();
 
 const emit = defineEmits<{
@@ -30,6 +32,7 @@ let clickTimer: ReturnType<typeof setTimeout> | undefined;
 const DBLCLICK_DELAY = 300;
 
 function onPointerDown(e: PointerEvent) {
+  if (props.locked) return;
   hasDragged.value = false;
   pointerDownPos.value = { x: e.clientX, y: e.clientY };
   dragging.value = true;
@@ -38,6 +41,7 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
+  if (props.locked) return;
   const dx = e.clientX - pointerDownPos.value.x;
   const dy = e.clientY - pointerDownPos.value.y;
   if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
@@ -84,6 +88,12 @@ function onPetClick() {
   >
     <button class="pet-button" type="button" :aria-label="`Camo is ${state}`">
       <img class="pet-image" :src="asset" :alt="`Camo ${state}`" draggable="false" />
+      <span
+        v-if="statusStyle !== 'hidden'"
+        class="state-dot"
+        :class="`style-${statusStyle ?? 'dot'}`"
+        :data-state="state"
+      />
     </button>
   </section>
 </template>

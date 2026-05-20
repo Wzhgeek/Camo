@@ -8,7 +8,7 @@ import { isTauri } from "../core/platform";
 marked.setOptions({ breaks: true, gfm: true });
 
 const emit = defineEmits<{ close: [] }>();
-defineProps<{ standalone?: boolean }>();
+const props = defineProps<{ standalone?: boolean; locked?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const chat = useChatStore();
@@ -47,12 +47,14 @@ const pointerDownPos = ref({ x: 0, y: 0 });
 const DRAG_THRESHOLD = 5;
 
 function onHeaderPointerDown(e: PointerEvent) {
+  if (props.locked) return;
   dragging.value = true;
   pointerDownPos.value = { x: e.clientX, y: e.clientY };
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
 
 function onHeaderPointerMove(e: PointerEvent) {
+  if (props.locked) return;
   if (!dragging.value) return;
   const dx = e.clientX - pointerDownPos.value.x;
   const dy = e.clientY - pointerDownPos.value.y;

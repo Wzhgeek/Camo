@@ -27,12 +27,55 @@ export interface WindowFrame {
   height: number;
 }
 
+export type DarkModePreference = "auto" | "light" | "dark";
+export type FontSizePreset = "small" | "medium" | "large";
+export type StatusIndicatorStyle = "dot" | "pill" | "hidden";
+export type StatusColorPreset = "default" | "cool" | "warm";
+export type BubbleStylePreset = "compact" | "standard" | "soft";
+export type PositionMode = "left-bottom" | "right-bottom" | "free";
+
+export interface AppearanceConfig {
+  fontFamily: string;
+  fontSizePreset: FontSizePreset;
+  fontSizePx: number;
+  textColor: string;
+  darkMode: DarkModePreference;
+  darkStartTime: string;
+  darkEndTime: string;
+  panelOpacity: number;
+  statusIndicatorStyle: StatusIndicatorStyle;
+  statusColorPreset: StatusColorPreset;
+  bubbleStyle: BubbleStylePreset;
+  bubbleOpacity: number;
+  bubbleRadius: number;
+}
+
+export interface WindowBehaviorConfig {
+  alwaysOnTop: boolean;
+  locked: boolean;
+  opacity: number;
+  rememberPosition: boolean;
+  positionMode: PositionMode;
+}
+
+export interface WindowPreferencesConfig {
+  pet: WindowBehaviorConfig;
+  tools: WindowBehaviorConfig;
+}
+
+export interface SystemPreferencesConfig {
+  autostart: boolean;
+}
+
 export interface CamoSettings {
   llm: LLMConfig;
   waterReminder: WaterReminderConfig;
   systemPrompt: string;
   theme: CamoTheme;
   layout: LayoutConfig;
+  appearance: AppearanceConfig;
+  windowPreferences: WindowPreferencesConfig;
+  systemPreferences: SystemPreferencesConfig;
 }
 
 const defaultSettings: CamoSettings = {
@@ -51,6 +94,40 @@ const defaultSettings: CamoSettings = {
     chat: { width: 380, height: 560 },
     settings: { width: 360, height: 420 },
     reminders: { width: 340, height: 460 },
+  },
+  appearance: {
+    fontFamily: "system",
+    fontSizePreset: "medium",
+    fontSizePx: 14,
+    textColor: "#272230",
+    darkMode: "auto",
+    darkStartTime: "20:00",
+    darkEndTime: "07:00",
+    panelOpacity: 0.92,
+    statusIndicatorStyle: "dot",
+    statusColorPreset: "default",
+    bubbleStyle: "standard",
+    bubbleOpacity: 0.96,
+    bubbleRadius: 16,
+  },
+  windowPreferences: {
+    pet: {
+      alwaysOnTop: true,
+      locked: false,
+      opacity: 1,
+      rememberPosition: true,
+      positionMode: "free",
+    },
+    tools: {
+      alwaysOnTop: true,
+      locked: false,
+      opacity: 0.96,
+      rememberPosition: true,
+      positionMode: "free",
+    },
+  },
+  systemPreferences: {
+    autostart: false,
   },
 };
 
@@ -72,6 +149,24 @@ function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
     settings: { ...defaultSettings.layout.settings, ...(incomingLayout.settings ?? {}) },
     reminders: { ...defaultSettings.layout.reminders, ...(incomingLayout.reminders ?? {}) },
   };
+  const normalizedAppearance: AppearanceConfig = {
+    ...defaultSettings.appearance,
+    ...(settings.appearance ?? {}),
+  };
+  const normalizedWindowPreferences: WindowPreferencesConfig = {
+    pet: {
+      ...defaultSettings.windowPreferences.pet,
+      ...(settings.windowPreferences?.pet ?? {}),
+    },
+    tools: {
+      ...defaultSettings.windowPreferences.tools,
+      ...(settings.windowPreferences?.tools ?? {}),
+    },
+  };
+  const normalizedSystemPreferences: SystemPreferencesConfig = {
+    ...defaultSettings.systemPreferences,
+    ...(settings.systemPreferences ?? {}),
+  };
 
   return {
     ...defaultSettings,
@@ -79,6 +174,9 @@ function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
     llm: { ...defaultLLMConfig, ...(settings.llm ?? {}) },
     waterReminder: { ...defaultSettings.waterReminder, ...(settings.waterReminder ?? {}) },
     layout: normalizedLayout,
+    appearance: normalizedAppearance,
+    windowPreferences: normalizedWindowPreferences,
+    systemPreferences: normalizedSystemPreferences,
     theme: isCamoTheme(settings.theme) ? settings.theme : "grey",
   };
 }
@@ -95,6 +193,9 @@ function loadSettings(): CamoSettings {
         systemPrompt: map.systemPrompt ?? defaultSettings.systemPrompt,
         theme: (map.theme as CamoTheme) ?? "grey",
         layout: map.layout ? JSON.parse(map.layout) : defaultSettings.layout,
+        appearance: map.appearance ? JSON.parse(map.appearance) : defaultSettings.appearance,
+        windowPreferences: map.windowPreferences ? JSON.parse(map.windowPreferences) : defaultSettings.windowPreferences,
+        systemPreferences: map.systemPreferences ? JSON.parse(map.systemPreferences) : defaultSettings.systemPreferences,
       });
     }
   } catch {}
@@ -112,6 +213,9 @@ function saveSettings(val: CamoSettings) {
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["systemPrompt", val.systemPrompt]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["theme", val.theme]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["layout", JSON.stringify(val.layout)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["appearance", JSON.stringify(val.appearance)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["windowPreferences", JSON.stringify(val.windowPreferences)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["systemPreferences", JSON.stringify(val.systemPreferences)]);
   } catch {
     localStorage.setItem("camo.settings", JSON.stringify(val));
   }
@@ -165,5 +269,30 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value.layout = { ...settings.value.layout, ...layout };
   }
 
-  return { settings, updateLLM, updateWaterReminder, updateSystemPrompt, updateTheme, updateLayout };
+  function updateAppearance(appearance: Partial<AppearanceConfig>) {
+    settings.value.appearance = { ...settings.value.appearance, ...appearance };
+  }
+
+  function updateWindowPreferences(preferences: Partial<WindowPreferencesConfig>) {
+    settings.value.windowPreferences = {
+      pet: { ...settings.value.windowPreferences.pet, ...(preferences.pet ?? {}) },
+      tools: { ...settings.value.windowPreferences.tools, ...(preferences.tools ?? {}) },
+    };
+  }
+
+  function updateSystemPreferences(preferences: Partial<SystemPreferencesConfig>) {
+    settings.value.systemPreferences = { ...settings.value.systemPreferences, ...preferences };
+  }
+
+  return {
+    settings,
+    updateLLM,
+    updateWaterReminder,
+    updateSystemPrompt,
+    updateTheme,
+    updateLayout,
+    updateAppearance,
+    updateWindowPreferences,
+    updateSystemPreferences,
+  };
 });

@@ -13,13 +13,16 @@ import { useSettingsStore } from "./stores/settingsStore";
 import { ReminderScheduler } from "./core/reminder/scheduler";
 import { isTauri } from "./core/platform";
 import {
+  applyCurrentWindowPreferences,
   closeCurrentWindow,
   currentWindowKind,
   installWindowFramePersistence,
   openToolWindow,
+  resetCurrentWindowPosition,
   syncPetWindowSize,
   toggleToolWindow,
 } from "./core/windowManager";
+import { applyAppearance, darkModeLabel, nextDarkModePreference } from "./core/appearance";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const camo = useCamoStore();
@@ -32,6 +35,10 @@ const scale = ref(settingsStore.settings.layout.scale);
 const petOffset = ref({ x: 0, y: 0 });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 const isPetWindow = computed(() => currentWindowKind === "pet");
+const currentBehavior = computed(() => isPetWindow.value
+  ? settingsStore.settings.windowPreferences.pet
+  : settingsStore.settings.windowPreferences.tools);
+const statusStyle = computed(() => settingsStore.settings.appearance.statusIndicatorStyle);
 
 const petSide = computed<"left" | "right">(() => {
   const midX = window.innerWidth / 2;
@@ -53,6 +60,13 @@ const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
 let frameUnlisteners: UnlistenFn[] = [];
 
+function applyLocalWindowVariables() {
+  const root = document.documentElement;
+  root.style.setProperty("--camo-pet-opacity", String(settingsStore.settings.windowPreferences.pet.opacity));
+  root.style.setProperty("--camo-tool-opacity", String(settingsStore.settings.windowPreferences.tools.opacity));
+  root.style.setProperty("--camo-tool-opacity-pct", `${Math.round(settingsStore.settings.windowPreferences.tools.opacity * 100)}%`);
+}
+
 function clearInactivityTimer() {
   if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = undefined; }
 }
@@ -70,6 +84,10 @@ watch(state, (s) => {
 });
 
 onMounted(() => {
+  applyAppearance(settingsStore.settings.appearance);
+  applyLocalWindowVariables();
+  applyCurrentWindowPreferences(currentWindowKind);
+  resetCurrentWindowPosition(currentWindowKind);
   installWindowFramePersistence(currentWindowKind).then((unlisteners) => {
     frameUnlisteners = unlisteners;
   });
@@ -109,10 +127,27 @@ watch(() => settingsStore.settings.layout.scale, (nextScale) => {
   if (isPetWindow.value) syncPetWindowSize(nextScale);
 });
 
+watch(() => settingsStore.settings.appearance, (appearance) => {
+  applyAppearance(appearance);
+}, { deep: true });
+
+watch(() => settingsStore.settings.windowPreferences, () => {
+  applyLocalWindowVariables();
+  applyCurrentWindowPreferences(currentWindowKind);
+  resetCurrentWindowPosition(currentWindowKind);
+}, { deep: true });
+
 function handlePetClick() {
   toggleToolWindow("chat");
   camo.transition({ type: "PET_CLICKED" });
   camo.returnToIdle(400);
+}
+
+function toggleDarkMode() {
+  contextMenu.value.show = false;
+  settingsStore.updateAppearance({
+    darkMode: nextDarkModePreference(settingsStore.settings.appearance.darkMode),
+  });
 }
 
 function closeChatPanel() {
@@ -136,7 +171,7 @@ function handleContextMenu(e: MouseEvent) {
   if (!isPetWindow.value) return;
   e.preventDefault();
   const menuW = 100;
-  const menuH = 96;
+  const menuH = 124;
   const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
   const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
   contextMenu.value = { show: true, x, y };
@@ -188,6 +223,7 @@ function handleWheel(e: WheelEvent) {
     <ChatPanel
       v-if="currentWindowKind === 'chat'"
       standalone
+      :locked="currentBehavior.locked"
       @close="closeChatPanel"
     />
     <CamoPet
@@ -197,6 +233,8 @@ function handleWheel(e: WheelEvent) {
       :panel-open="false"
       :scale="scale"
       :offset="petOffset"
+      :locked="currentBehavior.locked"
+      :status-style="statusStyle"
       @click="handlePetClick"
       @wheel="handleWheel"
       @drag="handlePetDrag"
@@ -211,18 +249,21 @@ function handleWheel(e: WheelEvent) {
     >
       <button class="context-item" @click="openSettings">设置</button>
       <button class="context-item" @click="openReminders">提醒</button>
+      <button class="context-item" @click="toggleDarkMode">{{ darkModeLabel(settingsStore.settings.appearance.darkMode) }}</button>
       <button class="context-item danger" @click="exitApp">退出 Camo</button>
     </div>
 
     <SettingsPanel
       v-if="currentWindowKind === 'settings'"
       standalone
+      :locked="currentBehavior.locked"
       :pet-side="petSide"
       @close="closeSettingsPanel"
     />
     <ReminderPanel
       v-if="currentWindowKind === 'reminders'"
       standalone
+      :locked="currentBehavior.locked"
       :pet-side="petSide"
       @close="closeReminderPanel"
     />
@@ -264,6 +305,7 @@ html[data-tauri] .camo-workspace { background: transparent; }
   display: grid;
   place-items: end center;
   user-select: none;
+  opacity: var(--camo-pet-opacity, 1);
 }
 .pet-button {
   position: relative;
@@ -301,11 +343,20 @@ html[data-tauri] .camo-workspace { background: transparent; }
   border: 2px solid rgba(255,255,255,0.9);
   box-shadow: 0 0 0 5px rgba(141,99,232,0.12);
 }
+.state-dot.style-pill {
+  width: 34px;
+  border-radius: 999px;
+}
 .state-dot[data-state="thinking"],
 .state-dot[data-state="answering"] { background: #3b82f6; }
 .state-dot[data-state="water"] { background: #06b6d4; }
 .state-dot[data-state="exercise"],
 .state-dot[data-state="done"] { background: #22c55e; }
+html[data-camo-status-preset="cool"] .state-dot { background: #0ea5e9; }
+html[data-camo-status-preset="cool"] .state-dot[data-state="water"] { background: #14b8a6; }
+html[data-camo-status-preset="warm"] .state-dot { background: #f59e0b; }
+html[data-camo-status-preset="warm"] .state-dot[data-state="exercise"],
+html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background: #f97316; }
 
 .chat-panel {
   width: min(360px, calc(100vw - 190px));
@@ -313,9 +364,10 @@ html[data-tauri] .camo-workspace { background: transparent; }
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
-  border: 1px solid rgba(71,53,93,0.12);
+  border: 1px solid var(--camo-border);
   border-radius: 18px;
-  background: rgba(255,255,255,0.86);
+  color: var(--camo-text);
+  background: color-mix(in srgb, var(--camo-surface) var(--camo-tool-opacity-pct), transparent);
   box-shadow: 0 24px 64px rgba(53,42,70,0.2);
   backdrop-filter: blur(24px);
 }
@@ -339,7 +391,7 @@ html[data-tauri] .camo-workspace { background: transparent; }
 .chat-header:active { cursor: grabbing; }
 .eyebrow {
   margin: 0;
-  color: #71579d;
+  color: var(--camo-primary);
   font-size: 16px;
   font-weight: 700;
   line-height: 1.2;
@@ -365,7 +417,7 @@ html[data-tauri] .camo-workspace { background: transparent; }
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(95,79,118,0.08);
-  color: #6b6078;
+  color: var(--camo-muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -571,14 +623,14 @@ html[data-tauri] .camo-workspace { background: transparent; }
 }
 .message.assistant {
   align-self: flex-start;
-  color: #31293d;
-  background: rgba(244,240,249,0.95);
+  color: var(--camo-text);
+  background: color-mix(in srgb, var(--camo-surface-strong) 88%, var(--camo-primary) 12%);
   border-bottom-left-radius: 5px;
 }
 .message.user {
   align-self: flex-end;
   color: #fff;
-  background: #7f5af0;
+  background: var(--camo-primary);
   border-bottom-right-radius: 5px;
 }
 .composer {
@@ -595,8 +647,8 @@ html[data-tauri] .camo-workspace { background: transparent; }
   padding: 0 12px;
   border: 1px solid rgba(79,58,105,0.12);
   border-radius: 12px;
-  color: #231d2d;
-  background: rgba(255,255,255,0.92);
+  color: var(--camo-text);
+  background: var(--camo-surface-strong);
   outline: none;
 }
 .composer input:focus {
@@ -654,8 +706,8 @@ html[data-tauri] .camo-workspace { background: transparent; }
   position: fixed;
   padding: 3px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.96);
-  border: 1px solid rgba(71,53,93,0.08);
+  background: var(--camo-surface-strong);
+  border: 1px solid var(--camo-border);
   box-shadow: 0 4px 12px rgba(53,42,70,0.14);
   backdrop-filter: blur(12px);
   display: flex;
@@ -670,7 +722,7 @@ html[data-tauri] .camo-workspace { background: transparent; }
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #272230;
+  color: var(--camo-text);
   font-size: 11px;
   font-weight: 500;
   text-align: left;

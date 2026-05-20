@@ -65,13 +65,20 @@ function skip() {
   right: 20px;
   width: 240px;
   padding: 16px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(71, 53, 93, 0.12);
+  border-radius: var(--camo-bubble-radius);
+  background: color-mix(in srgb, var(--camo-surface-strong) var(--camo-bubble-opacity-pct), transparent);
+  border: 1px solid var(--camo-border);
   box-shadow: 0 16px 48px rgba(53, 42, 70, 0.2);
   backdrop-filter: blur(20px);
   z-index: 8000;
   text-align: center;
+}
+html[data-camo-bubble-style="compact"] .reminder-bubble {
+  width: 210px;
+  padding: 12px;
+}
+html[data-camo-bubble-style="soft"] .reminder-bubble {
+  box-shadow: 0 10px 36px rgba(127, 90, 240, 0.18);
 }
 
 .bubble-icon {
@@ -83,7 +90,7 @@ function skip() {
   margin: 0 0 14px;
   font-size: 14px;
   font-weight: 600;
-  color: #231d2d;
+  color: var(--camo-text);
 }
 
 .bubble-actions {
@@ -96,8 +103,8 @@ function skip() {
   padding: 6px 12px;
   border: 1px solid rgba(79, 58, 105, 0.14);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #4a3f5c;
+  background: var(--camo-surface);
+  color: var(--camo-text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -107,8 +114,8 @@ function skip() {
 }
 
 .bubble-btn.primary {
-  background: #7f5af0;
-  border-color: #7f5af0;
+  background: var(--camo-primary);
+  border-color: var(--camo-primary);
   color: #fff;
 }
 

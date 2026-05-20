@@ -9,7 +9,7 @@ import { Droplets, Bell } from "lucide-vue-next";
 import { isTauri } from "../core/platform";
 
 const emit = defineEmits<{ close: [] }>();
-const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean }>();
+const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
@@ -141,12 +141,14 @@ function deleteReminder(id: string) { reminderService.delete(id); reminderStoreR
 function toggleReminder(id: string, enabled: boolean) { reminderService.update(id, { enabled }); reminderStoreRef.refreshReminders(); }
 
 function onDragStart(e: PointerEvent) {
+  if (props.locked) return;
   dragging.value = true;
   pointerDownPos.value = { x: e.clientX, y: e.clientY };
   dragStart.value = { x: e.clientX - pos.value.x, y: e.clientY - pos.value.y };
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
 function onDragMove(e: PointerEvent) {
+  if (props.locked) return;
   if (!dragging.value) return;
   if (isTauri) {
     const dx = e.clientX - pointerDownPos.value.x;
@@ -264,7 +266,8 @@ function onDragEnd() { dragging.value = false; }
   max-height: 500px;
   resize: none;
   overflow: hidden;
-  background: rgba(255,255,255,0.97);
+  color: var(--camo-text);
+  background: color-mix(in srgb, var(--camo-surface-strong) var(--camo-tool-opacity-pct), transparent);
   border-radius: 10px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.18);
   z-index: 9999;
@@ -355,7 +358,7 @@ function onDragEnd() { dragging.value = false; }
   gap: 6px;
   margin-bottom: 4px;
 }
-.row label { min-width: 36px; font-size: 10px; color: #555; }
+.row label { min-width: 36px; font-size: 10px; color: var(--camo-muted); }
 .row input, .row select {
   flex: 1; padding: 3px 5px; border: 1px solid #ddd;
   border-radius: 4px; font-size: 10px; outline: none;
@@ -363,7 +366,7 @@ function onDragEnd() { dragging.value = false; }
 .row input[type="checkbox"] { flex: none; width: 13px; height: 13px; }
 .num-input { width: 48px !important; flex: none !important; }
 .time-input { width: 72px !important; flex: none !important; }
-.unit { font-size: 10px; color: #666; }
+.unit { font-size: 10px; color: var(--camo-muted); }
 .add-btn {
   background: none; border: 1px solid #ddd; border-radius: 4px;
   font-size: 10px; cursor: pointer; padding: 2px 6px; color: #7c3aed;
@@ -374,7 +377,7 @@ function onDragEnd() { dragging.value = false; }
   margin-bottom: 6px;
   border: 1px solid #eee;
   border-radius: 6px;
-  background: #fafafa;
+  background: var(--camo-surface);
 }
 .confirm-btn {
   width: 100%; margin-top: 6px; padding: 4px;
@@ -388,7 +391,7 @@ function onDragEnd() { dragging.value = false; }
   padding: 5px 0; border-bottom: 1px solid #f5f5f5;
 }
 .reminder-info { flex: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
-.r-title { font-size: 11px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-title { font-size: 11px; color: var(--camo-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-meta { font-size: 9px; color: #888; }
 .countdown { color: #7c3aed; font-weight: 600; }
 .del-btn {

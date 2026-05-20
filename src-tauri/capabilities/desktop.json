@@ -5,9 +5,7 @@
     "windows",
     "linux"
   ],
-  "windows": [
-    "main"
-  ],
+  "windows": ["main", "chat", "settings", "reminders"],
   "permissions": [
     "autostart:default"
   ]

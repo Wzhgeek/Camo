@@ -46,6 +46,11 @@ function frameFor(layout: LayoutConfig, kind: AppWindowKind): WindowFrame {
   return layout[kind];
 }
 
+function behaviorFor(kind: AppWindowKind) {
+  const store = useSettingsStore();
+  return kind === "pet" ? store.settings.windowPreferences.pet : store.settings.windowPreferences.tools;
+}
+
 function updateFrame(kind: AppWindowKind, frame: Partial<WindowFrame>) {
   const store = useSettingsStore();
   store.updateLayout({
@@ -216,12 +221,13 @@ async function keepRelatedWindowsNear(movedKind: AppWindowKind) {
 async function defaultToolFrame(kind: ToolWindowKind): Promise<Required<WindowFrame>> {
   const store = useSettingsStore();
   const stored = frameFor(store.settings.layout, kind);
+  const behavior = store.settings.windowPreferences.tools;
   const option = TOOL_WINDOW_OPTIONS[kind];
   const workArea = await getLogicalWorkArea();
   const width = stored.width || option.width;
   const height = stored.height || option.height;
 
-  if (workArea && typeof stored.x === "number" && typeof stored.y === "number") {
+  if (behavior.rememberPosition && workArea && typeof stored.x === "number" && typeof stored.y === "number") {
     return clampFrame({ ...stored, width, height }, workArea);
   }
 
@@ -253,6 +259,7 @@ export async function openToolWindow(kind: ToolWindowKind) {
 
   const option = TOOL_WINDOW_OPTIONS[kind];
   const frame = await defaultToolFrame(kind);
+  const behavior = useSettingsStore().settings.windowPreferences.tools;
   updateFrame(kind, frame);
 
   const child = new WebviewWindow(kind, {
@@ -267,8 +274,8 @@ export async function openToolWindow(kind: ToolWindowKind) {
     decorations: false,
     transparent: true,
     resizable: true,
-    alwaysOnTop: true,
-    visibleOnAllWorkspaces: true,
+    alwaysOnTop: behavior.alwaysOnTop,
+    visibleOnAllWorkspaces: behavior.alwaysOnTop,
     skipTaskbar: true,
     shadow: true,
     preventOverflow: { width: SAFE_MARGIN, height: SAFE_MARGIN },
@@ -307,6 +314,33 @@ export async function syncPetWindowSize(scale: number) {
   await clampCurrentWindow("pet").catch(() => {});
 }
 
+export async function applyCurrentWindowPreferences(kind: AppWindowKind) {
+  if (!isTauri) return;
+  const behavior = behaviorFor(kind);
+  const win = getCurrentWindow();
+  await win.setAlwaysOnTop(behavior.alwaysOnTop).catch(() => {});
+  await win.setVisibleOnAllWorkspaces(behavior.alwaysOnTop).catch(() => {});
+}
+
+export async function resetCurrentWindowPosition(kind: AppWindowKind) {
+  if (!isTauri) return;
+  const behavior = behaviorFor(kind);
+  if (behavior.positionMode === "free") return;
+  const workArea = await getLogicalWorkArea();
+  const frame = await readCurrentLogicalFrame();
+  if (!workArea || !frame) return;
+  const x = behavior.positionMode === "left-bottom"
+    ? workArea.x + SAFE_MARGIN
+    : workArea.x + workArea.width - frame.width - SAFE_MARGIN;
+  const nextFrame = clampFrame({
+    ...frame,
+    x,
+    y: workArea.y + workArea.height - frame.height - SAFE_MARGIN,
+  }, workArea);
+  await getCurrentWindow().setPosition(new LogicalPosition(nextFrame.x, nextFrame.y)).catch(() => {});
+  updateFrame(kind, nextFrame);
+}
+
 export async function installWindowFramePersistence(kind: AppWindowKind): Promise<UnlistenFn[]> {
   if (!isTauri) return [];
   const win = getCurrentWindow();
@@ -316,6 +350,7 @@ export async function installWindowFramePersistence(kind: AppWindowKind): Promis
   const scheduleSaveAndClamp = () => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
+      if (behaviorFor(kind).locked) return;
       clampCurrentWindow(kind)
         .then(() => keepRelatedWindowsNear(kind))
         .catch(() => {});
