@@ -1,5 +1,5 @@
 {
-  "name": "camo",
+  "name": "@wzhgeek/camo",
   "private": false,
   "version": "0.2.0",
   "description": "A lightweight Tauri desktop pet assistant.",
