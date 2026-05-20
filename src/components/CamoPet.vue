@@ -35,6 +35,9 @@ function onPointerDown(e: PointerEvent) {
     import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
       .catch(() => {});
+    // still track movement for drag detection in Tauri mode
+    dragging.value = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     return;
   }
   dragging.value = true;
