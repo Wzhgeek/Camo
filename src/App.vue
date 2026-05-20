@@ -41,8 +41,40 @@ const scheduler = new ReminderScheduler(
   (id, ts) => reminderStore.setNextTrigger(id, ts),
 );
 
-onMounted(() => scheduler.start());
-onUnmounted(() => scheduler.stop());
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearInactivityTimer() {
+  if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = undefined; }
+}
+
+function resetInactivityTimer() {
+  clearInactivityTimer();
+  if (state.value === "sleepy") { camo.returnToIdle(0); return; }
+  if (state.value !== "idle") return;
+  inactivityTimer = setTimeout(() => camo.transition({ type: "IDLE_TIMEOUT" }), IDLE_TIMEOUT_MS);
+}
+
+watch(state, (s) => {
+  if (s === "idle") resetInactivityTimer();
+  else clearInactivityTimer();
+});
+
+onMounted(() => {
+  scheduler.start();
+  window.addEventListener("mousemove", resetInactivityTimer, { passive: true });
+  window.addEventListener("keydown", resetInactivityTimer, { passive: true });
+  window.addEventListener("click", resetInactivityTimer, { passive: true });
+  resetInactivityTimer();
+});
+
+onUnmounted(() => {
+  scheduler.stop();
+  clearInactivityTimer();
+  window.removeEventListener("mousemove", resetInactivityTimer);
+  window.removeEventListener("keydown", resetInactivityTimer);
+  window.removeEventListener("click", resetInactivityTimer);
+});
 
 watch(llmPhase, (phase) => {
   if (phase === "thinking") camo.transition({ type: "USER_SENT_MESSAGE" });
