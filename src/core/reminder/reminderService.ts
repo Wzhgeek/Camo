@@ -14,19 +14,20 @@ function isDbReady(): boolean {
 
 export class ReminderService {
   list(): Reminder[] {
+    const mirrored = readMirror();
+    if (mirrored) return mirrored;
+
     if (isDbReady()) {
       const rows = dbAll<any>("SELECT * FROM reminders ORDER BY created_at DESC");
-      return rows.map(rowToReminder);
+      const reminders = rows.map(rowToReminder);
+      writeMirror(reminders);
+      return reminders;
     }
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    return [];
   }
 
   create(input: ReminderInput): Reminder {
+    const existingList = this.list();
     const now = new Date().toISOString();
     const reminder: Reminder = {
       ...input,
@@ -45,10 +46,9 @@ export class ReminderService {
          reminder.createdAt, reminder.updatedAt],
       );
     } else {
-      const list = this.list();
-      list.push(reminder);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...existingList, reminder]));
     }
+    writeMirror([reminder, ...existingList]);
     return reminder;
   }
 
@@ -63,21 +63,38 @@ export class ReminderService {
          JSON.stringify(updated.schedulePayload), updated.enabled ? 1 : 0,
          updated.updatedAt, id],
       );
+      writeMirror(this.list().map((r) => (r.id === id ? updated : r)));
     } else {
       const list = this.list().map((r) =>
         r.id === id ? { ...r, ...patch, updatedAt: new Date().toISOString() } : r,
       );
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      writeMirror(list);
     }
   }
 
   delete(id: string): void {
     if (isDbReady()) {
       dbRun("DELETE FROM reminders WHERE id = ?", [id]);
+      writeMirror(this.list().filter((r) => r.id !== id));
     } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.list().filter((r) => r.id !== id)));
+      writeMirror(this.list().filter((r) => r.id !== id));
     }
   }
+}
+
+function readMirror(): Reminder[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMirror(reminders: Reminder[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(reminders));
+  } catch {}
 }
 
 function rowToReminder(row: any): Reminder {

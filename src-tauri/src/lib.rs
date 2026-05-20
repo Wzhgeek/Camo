@@ -1,6 +1,7 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             use tauri::Manager;
@@ -10,7 +11,7 @@ pub fn run() {
                     "document.documentElement.style.backgroundColor = 'transparent';
                      document.body.style.backgroundColor = 'transparent';
                      var app = document.getElementById('app');
-                     if (app) app.style.backgroundColor = 'transparent';"
+                     if (app) app.style.backgroundColor = 'transparent';",
                 );
             }
             Ok(())

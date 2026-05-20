@@ -8,6 +8,7 @@ import { isTauri } from "../core/platform";
 marked.setOptions({ breaks: true, gfm: true });
 
 const emit = defineEmits<{ close: [] }>();
+defineProps<{ standalone?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const chat = useChatStore();
@@ -85,7 +86,7 @@ watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
 </script>
 
 <template>
-  <aside data-camo-surface class="chat-panel" @click="closeDropdown">
+  <aside data-camo-surface class="chat-panel" :class="{ 'standalone-panel': standalone }" @click="closeDropdown">
     <header
       class="chat-header"
       @pointerdown="onHeaderPointerDown"

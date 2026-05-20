@@ -13,9 +13,18 @@ export interface WaterReminderConfig {
 }
 
 export interface LayoutConfig {
-  offsetX: number;
-  offsetY: number;
   scale: number;
+  pet: WindowFrame;
+  chat: WindowFrame;
+  settings: WindowFrame;
+  reminders: WindowFrame;
+}
+
+export interface WindowFrame {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
 }
 
 export interface CamoSettings {
@@ -36,16 +45,40 @@ const defaultSettings: CamoSettings = {
   },
   systemPrompt: "你是 Camo，一个简洁、温和的桌面个人助手。回答简短清楚，默认中文。",
   theme: "grey",
-  layout: { offsetX: 0, offsetY: 0, scale: 1 },
+  layout: {
+    scale: 1,
+    pet: { width: 180, height: 210 },
+    chat: { width: 380, height: 560 },
+    settings: { width: 360, height: 420 },
+    reminders: { width: 340, height: 460 },
+  },
 };
 
+const SETTINGS_SYNC_KEY = "camo.settings.sync";
+const settingsSourceId = crypto.randomUUID();
+let applyingRemoteSettings = false;
+
 function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
+  const incomingLayout = (settings.layout ?? {}) as Partial<LayoutConfig> & { offsetX?: number; offsetY?: number };
+  const normalizedLayout: LayoutConfig = {
+    scale: typeof incomingLayout.scale === "number" ? incomingLayout.scale : defaultSettings.layout.scale,
+    pet: {
+      ...defaultSettings.layout.pet,
+      ...(incomingLayout.pet ?? {}),
+      x: incomingLayout.pet?.x ?? incomingLayout.offsetX,
+      y: incomingLayout.pet?.y ?? incomingLayout.offsetY,
+    },
+    chat: { ...defaultSettings.layout.chat, ...(incomingLayout.chat ?? {}) },
+    settings: { ...defaultSettings.layout.settings, ...(incomingLayout.settings ?? {}) },
+    reminders: { ...defaultSettings.layout.reminders, ...(incomingLayout.reminders ?? {}) },
+  };
+
   return {
     ...defaultSettings,
     ...settings,
     llm: { ...defaultLLMConfig, ...(settings.llm ?? {}) },
     waterReminder: { ...defaultSettings.waterReminder, ...(settings.waterReminder ?? {}) },
-    layout: { ...defaultSettings.layout, ...(settings.layout ?? {}) },
+    layout: normalizedLayout,
     theme: isCamoTheme(settings.theme) ? settings.theme : "grey",
   };
 }
@@ -82,14 +115,35 @@ function saveSettings(val: CamoSettings) {
   } catch {
     localStorage.setItem("camo.settings", JSON.stringify(val));
   }
+  try {
+    localStorage.setItem(SETTINGS_SYNC_KEY, JSON.stringify({
+      source: settingsSourceId,
+      settings: val,
+      updatedAt: Date.now(),
+    }));
+  } catch {}
 }
 
 export const useSettingsStore = defineStore("settings", () => {
   const settings = ref<CamoSettings>(loadSettings());
 
   watch(settings, (val) => {
+    if (applyingRemoteSettings) return;
     saveSettings(val);
   }, { deep: true });
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", (event) => {
+      if (event.key !== SETTINGS_SYNC_KEY || !event.newValue) return;
+      try {
+        const payload = JSON.parse(event.newValue) as { source?: string; settings?: Partial<CamoSettings> };
+        if (payload.source === settingsSourceId || !payload.settings) return;
+        applyingRemoteSettings = true;
+        settings.value = normalizeSettings(payload.settings);
+        queueMicrotask(() => { applyingRemoteSettings = false; });
+      } catch {}
+    });
+  }
 
   function updateLLM(config: Partial<LLMConfig>) {
     settings.value.llm = { ...settings.value.llm, ...config };

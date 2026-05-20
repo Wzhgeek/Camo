@@ -12,6 +12,15 @@ import { useReminderStore } from "./stores/reminderStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { ReminderScheduler } from "./core/reminder/scheduler";
 import { isTauri } from "./core/platform";
+import {
+  closeCurrentWindow,
+  currentWindowKind,
+  installWindowFramePersistence,
+  openToolWindow,
+  syncPetWindowSize,
+  toggleToolWindow,
+} from "./core/windowManager";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const camo = useCamoStore();
 const chatStore = useChatStore();
@@ -19,12 +28,10 @@ const reminderStore = useReminderStore();
 const settingsStore = useSettingsStore();
 const { state, asset } = storeToRefs(camo);
 const { llmPhase } = storeToRefs(chatStore);
-const panelOpen = ref(false);
-const settingsOpen = ref(false);
-const reminderPanelOpen = ref(false);
 const scale = ref(settingsStore.settings.layout.scale);
-const petOffset = ref(isTauri ? { x: 0, y: 0 } : { x: settingsStore.settings.layout.offsetX, y: settingsStore.settings.layout.offsetY });
+const petOffset = ref({ x: 0, y: 0 });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
+const isPetWindow = computed(() => currentWindowKind === "pet");
 
 const petSide = computed<"left" | "right">(() => {
   const midX = window.innerWidth / 2;
@@ -44,6 +51,7 @@ const scheduler = new ReminderScheduler(
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
+let frameUnlisteners: UnlistenFn[] = [];
 
 function clearInactivityTimer() {
   if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = undefined; }
@@ -62,15 +70,24 @@ watch(state, (s) => {
 });
 
 onMounted(() => {
-  scheduler.start();
-  window.addEventListener("mousemove", resetInactivityTimer, { passive: true });
-  window.addEventListener("keydown", resetInactivityTimer, { passive: true });
-  window.addEventListener("click", resetInactivityTimer, { passive: true });
-  resetInactivityTimer();
+  installWindowFramePersistence(currentWindowKind).then((unlisteners) => {
+    frameUnlisteners = unlisteners;
+  });
+
+  if (isPetWindow.value) {
+    scheduler.start();
+    syncPetWindowSize(scale.value);
+    window.addEventListener("mousemove", resetInactivityTimer, { passive: true });
+    window.addEventListener("keydown", resetInactivityTimer, { passive: true });
+    window.addEventListener("click", resetInactivityTimer, { passive: true });
+    resetInactivityTimer();
+  }
 });
 
 onUnmounted(() => {
-  scheduler.stop();
+  frameUnlisteners.forEach((unlisten) => unlisten());
+  frameUnlisteners = [];
+  if (isPetWindow.value) scheduler.stop();
   clearInactivityTimer();
   window.removeEventListener("mousemove", resetInactivityTimer);
   window.removeEventListener("keydown", resetInactivityTimer);
@@ -87,36 +104,37 @@ watch(llmPhase, (phase) => {
   else camo.returnToIdle(700);
 });
 
+watch(() => settingsStore.settings.layout.scale, (nextScale) => {
+  scale.value = nextScale;
+  if (isPetWindow.value) syncPetWindowSize(nextScale);
+});
+
 function handlePetClick() {
-  const nextPanelOpen = !panelOpen.value;
-  panelOpen.value = nextPanelOpen;
-  if (nextPanelOpen) {
-    settingsOpen.value = false;
-    reminderPanelOpen.value = false;
-  }
+  toggleToolWindow("chat");
   camo.transition({ type: "PET_CLICKED" });
   camo.returnToIdle(400);
 }
 
 function closeChatPanel() {
-  panelOpen.value = false;
+  closeCurrentWindow();
 }
 
 function closeSettingsPanel() {
-  settingsOpen.value = false;
+  closeCurrentWindow();
 }
 
 function closeReminderPanel() {
-  reminderPanelOpen.value = false;
+  closeCurrentWindow();
 }
 
 function handlePetDrag(pos: { x: number; y: number }) {
   if (isTauri) return;
   petOffset.value = pos;
-  settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
 }
 
 function handleContextMenu(e: MouseEvent) {
+  if (!isPetWindow.value) return;
+  e.preventDefault();
   const menuW = 100;
   const menuH = 96;
   const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
@@ -130,23 +148,20 @@ function closeContextMenu() {
 
 function openSettings() {
   contextMenu.value.show = false;
-  panelOpen.value = false;
-  reminderPanelOpen.value = false;
-  settingsOpen.value = true;
+  openToolWindow("settings");
 }
 
 function openReminders() {
   contextMenu.value.show = false;
-  panelOpen.value = false;
-  settingsOpen.value = false;
-  reminderPanelOpen.value = true;
+  openToolWindow("reminders");
 }
 
 async function exitApp() {
   contextMenu.value.show = false;
   try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    await getCurrentWindow().close();
+    const { getAllWindows } = await import("@tauri-apps/api/window");
+    const windows = await getAllWindows();
+    await Promise.all(windows.map((win) => win.close().catch(() => {})));
   } catch {
     window.close();
   }
@@ -159,24 +174,27 @@ function handleWheel(e: WheelEvent) {
     scale.value = Math.max(0.5, +(scale.value - 0.05).toFixed(2));
   }
   settingsStore.updateLayout({ scale: scale.value });
+  syncPetWindowSize(scale.value);
 }
 </script>
 
 <template>
   <main
     class="camo-workspace"
-    :class="{ expanded: panelOpen }"
-    @contextmenu.prevent="handleContextMenu"
+    :class="`window-${currentWindowKind}`"
+    @contextmenu="handleContextMenu"
     @click="closeContextMenu"
   >
     <ChatPanel
-      v-show="panelOpen"
+      v-if="currentWindowKind === 'chat'"
+      standalone
       @close="closeChatPanel"
     />
     <CamoPet
+      v-if="currentWindowKind === 'pet'"
       :state="state"
       :asset="asset"
-      :panel-open="panelOpen"
+      :panel-open="false"
       :scale="scale"
       :offset="petOffset"
       @click="handlePetClick"
@@ -196,9 +214,19 @@ function handleWheel(e: WheelEvent) {
       <button class="context-item danger" @click="exitApp">退出 Camo</button>
     </div>
 
-    <SettingsPanel v-if="settingsOpen" :pet-side="petSide" @close="closeSettingsPanel" />
-    <ReminderPanel v-if="reminderPanelOpen" :pet-side="petSide" @close="closeReminderPanel" />
-    <ReminderBubble />
+    <SettingsPanel
+      v-if="currentWindowKind === 'settings'"
+      standalone
+      :pet-side="petSide"
+      @close="closeSettingsPanel"
+    />
+    <ReminderPanel
+      v-if="currentWindowKind === 'reminders'"
+      standalone
+      :pet-side="petSide"
+      @close="closeReminderPanel"
+    />
+    <ReminderBubble v-if="currentWindowKind === 'pet'" />
   </main>
 </template>
 
@@ -212,6 +240,18 @@ function handleWheel(e: WheelEvent) {
   justify-content: flex-end;
   gap: 12px;
   padding: 14px;
+}
+.camo-workspace.window-pet {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.camo-workspace.window-chat,
+.camo-workspace.window-settings,
+.camo-workspace.window-reminders {
+  display: block;
+  padding: 0;
+  background: transparent;
 }
 html[data-tauri] .camo-workspace { background: transparent; }
 .chat-panel { align-self: flex-end; }
@@ -278,6 +318,13 @@ html[data-tauri] .camo-workspace { background: transparent; }
   background: rgba(255,255,255,0.86);
   box-shadow: 0 24px 64px rgba(53,42,70,0.2);
   backdrop-filter: blur(24px);
+}
+.chat-panel.standalone-panel {
+  width: 100vw;
+  height: 100vh;
+  border: 1px solid rgba(71,53,93,0.16);
+  border-radius: 18px;
+  box-shadow: 0 24px 64px rgba(53,42,70,0.22);
 }
 .chat-header {
   display: flex;

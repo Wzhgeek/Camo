@@ -9,7 +9,7 @@ import { Droplets, Bell } from "lucide-vue-next";
 import { isTauri } from "../core/platform";
 
 const emit = defineEmits<{ close: [] }>();
-const props = defineProps<{ petSide?: "left" | "right" }>();
+const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
@@ -39,6 +39,7 @@ const pointerDownPos = ref({ x: 0, y: 0 });
 const DRAG_THRESHOLD = 5;
 
 const panelStyle = computed(() => {
+  if (props.standalone) return {};
   if (pos.value.x !== 0 || pos.value.y !== 0) {
     return { left: `calc(50% + ${pos.value.x}px)`, top: `calc(50% + ${pos.value.y}px)`, transform: 'translate(-50%, -50%)' };
   }
@@ -164,6 +165,7 @@ function onDragEnd() { dragging.value = false; }
   <div
     data-camo-surface
     class="reminder-panel"
+    :class="{ 'standalone-panel': standalone }"
     :style="panelStyle"
   >
     <div
@@ -269,6 +271,22 @@ function onDragEnd() { dragging.value = false; }
   font-size: 11px;
   display: flex;
   flex-direction: column;
+}
+.reminder-panel.standalone-panel {
+  position: relative;
+  inset: auto;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  border: 1px solid rgba(71,53,93,0.14);
+  border-radius: 16px;
+  box-shadow: 0 20px 56px rgba(53,42,70,0.2);
+}
+.reminder-panel.standalone-panel .drag-handle {
+  border-radius: 16px 16px 0 0;
 }
 .drag-handle {
   display: flex;

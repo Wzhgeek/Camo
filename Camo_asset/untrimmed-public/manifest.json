@@ -1,0 +1,341 @@
+{
+  "padding": 32,
+  "themes": {
+    "grey": {
+      "originalSize": {
+        "width": 1254,
+        "height": 1254
+      },
+      "cropBox": {
+        "left": 0,
+        "top": 0,
+        "right": 1181,
+        "bottom": 1153
+      },
+      "outputSize": {
+        "width": 1181,
+        "height": 1153
+      },
+      "files": {
+        "camo_answering.png": {
+          "visibleBox": {
+            "left": 272,
+            "top": 230,
+            "right": 1065,
+            "bottom": 950
+          },
+          "source": "public/camo/grey/camo_answering.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_answering.png"
+        },
+        "camo_done.png": {
+          "visibleBox": {
+            "left": 206,
+            "top": 152,
+            "right": 1149,
+            "bottom": 1121
+          },
+          "source": "public/camo/grey/camo_done.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_done.png"
+        },
+        "camo_exercise.png": {
+          "visibleBox": {
+            "left": 182,
+            "top": 154,
+            "right": 1062,
+            "bottom": 1062
+          },
+          "source": "public/camo/grey/camo_exercise.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_exercise.png"
+        },
+        "camo_happy.png": {
+          "visibleBox": {
+            "left": 253,
+            "top": 143,
+            "right": 985,
+            "bottom": 1065
+          },
+          "source": "public/camo/grey/camo_happy.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_happy.png"
+        },
+        "camo_icon.png": {
+          "visibleBox": {
+            "left": 236,
+            "top": 172,
+            "right": 1128,
+            "bottom": 1050
+          },
+          "source": "public/camo/grey/camo_icon.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_icon.png"
+        },
+        "camo_idle.png": {
+          "visibleBox": {
+            "left": 297,
+            "top": 252,
+            "right": 997,
+            "bottom": 940
+          },
+          "source": "public/camo/grey/camo_idle.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle.png"
+        },
+        "camo_idle1.png": {
+          "visibleBox": {
+            "left": 287,
+            "top": 176,
+            "right": 977,
+            "bottom": 1028
+          },
+          "source": "public/camo/grey/camo_idle1.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle1.png"
+        },
+        "camo_idle2.png": {
+          "visibleBox": {
+            "left": 271,
+            "top": 236,
+            "right": 1090,
+            "bottom": 1013
+          },
+          "source": "public/camo/grey/camo_idle2.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle2.png"
+        },
+        "camo_idle3.png": {
+          "visibleBox": {
+            "left": 273,
+            "top": 249,
+            "right": 1035,
+            "bottom": 931
+          },
+          "source": "public/camo/grey/camo_idle3.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle3.png"
+        },
+        "camo_idle4.png": {
+          "visibleBox": {
+            "left": 269,
+            "top": 280,
+            "right": 1134,
+            "bottom": 940
+          },
+          "source": "public/camo/grey/camo_idle4.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle4.png"
+        },
+        "camo_idle5.png": {
+          "visibleBox": {
+            "left": 258,
+            "top": 189,
+            "right": 972,
+            "bottom": 1018
+          },
+          "source": "public/camo/grey/camo_idle5.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_idle5.png"
+        },
+        "camo_reminder.png": {
+          "visibleBox": {
+            "left": 277,
+            "top": 176,
+            "right": 993,
+            "bottom": 1036
+          },
+          "source": "public/camo/grey/camo_reminder.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_reminder.png"
+        },
+        "camo_sleepy.png": {
+          "visibleBox": {
+            "left": 17,
+            "top": 6,
+            "right": 997,
+            "bottom": 923
+          },
+          "source": "public/camo/grey/camo_sleepy.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_sleepy.png"
+        },
+        "camo_thinking.png": {
+          "visibleBox": {
+            "left": 157,
+            "top": 81,
+            "right": 1081,
+            "bottom": 1063
+          },
+          "source": "public/camo/grey/camo_thinking.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_thinking.png"
+        },
+        "camo_water.png": {
+          "visibleBox": {
+            "left": 210,
+            "top": 99,
+            "right": 1028,
+            "bottom": 1038
+          },
+          "source": "public/camo/grey/camo_water.png",
+          "backup": "Camo_asset/untrimmed-public/grey/camo_water.png"
+        }
+      }
+    },
+    "perple": {
+      "originalSize": {
+        "width": 1254,
+        "height": 1254
+      },
+      "cropBox": {
+        "left": 81,
+        "top": 94,
+        "right": 1183,
+        "bottom": 1176
+      },
+      "outputSize": {
+        "width": 1102,
+        "height": 1082
+      },
+      "files": {
+        "camo_answering.png": {
+          "visibleBox": {
+            "left": 261,
+            "top": 214,
+            "right": 1151,
+            "bottom": 1015
+          },
+          "source": "public/camo/perple/camo_answering.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_answering.png"
+        },
+        "camo_done.png": {
+          "visibleBox": {
+            "left": 186,
+            "top": 135,
+            "right": 1076,
+            "bottom": 1144
+          },
+          "source": "public/camo/perple/camo_done.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_done.png"
+        },
+        "camo_exercise.png": {
+          "visibleBox": {
+            "left": 198,
+            "top": 161,
+            "right": 1070,
+            "bottom": 1047
+          },
+          "source": "public/camo/perple/camo_exercise.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_exercise.png"
+        },
+        "camo_happy.png": {
+          "visibleBox": {
+            "left": 209,
+            "top": 126,
+            "right": 1025,
+            "bottom": 1049
+          },
+          "source": "public/camo/perple/camo_happy.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_happy.png"
+        },
+        "camo_icon.png": {
+          "visibleBox": {
+            "left": 155,
+            "top": 131,
+            "right": 1099,
+            "bottom": 1105
+          },
+          "source": "public/camo/perple/camo_icon.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_icon.png"
+        },
+        "camo_idle.png": {
+          "visibleBox": {
+            "left": 238,
+            "top": 189,
+            "right": 1082,
+            "bottom": 1021
+          },
+          "source": "public/camo/perple/camo_idle.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle.png"
+        },
+        "camo_idle1.png": {
+          "visibleBox": {
+            "left": 145,
+            "top": 200,
+            "right": 1049,
+            "bottom": 1022
+          },
+          "source": "public/camo/perple/camo_idle1.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle1.png"
+        },
+        "camo_idle2.png": {
+          "visibleBox": {
+            "left": 113,
+            "top": 165,
+            "right": 1150,
+            "bottom": 1038
+          },
+          "source": "public/camo/perple/camo_idle2.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle2.png"
+        },
+        "camo_idle3.png": {
+          "visibleBox": {
+            "left": 237,
+            "top": 180,
+            "right": 1028,
+            "bottom": 978
+          },
+          "source": "public/camo/perple/camo_idle3.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle3.png"
+        },
+        "camo_idle4.png": {
+          "visibleBox": {
+            "left": 204,
+            "top": 129,
+            "right": 1093,
+            "bottom": 1056
+          },
+          "source": "public/camo/perple/camo_idle4.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle4.png"
+        },
+        "camo_idle5.png": {
+          "visibleBox": {
+            "left": 188,
+            "top": 206,
+            "right": 1073,
+            "bottom": 1047
+          },
+          "source": "public/camo/perple/camo_idle5.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_idle5.png"
+        },
+        "camo_reminder.png": {
+          "visibleBox": {
+            "left": 254,
+            "top": 137,
+            "right": 981,
+            "bottom": 1128
+          },
+          "source": "public/camo/perple/camo_reminder.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_reminder.png"
+        },
+        "camo_sleepy.png": {
+          "visibleBox": {
+            "left": 128,
+            "top": 130,
+            "right": 1112,
+            "bottom": 1085
+          },
+          "source": "public/camo/perple/camo_sleepy.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_sleepy.png"
+        },
+        "camo_thinking.png": {
+          "visibleBox": {
+            "left": 191,
+            "top": 144,
+            "right": 1053,
+            "bottom": 1046
+          },
+          "source": "public/camo/perple/camo_thinking.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_thinking.png"
+        },
+        "camo_water.png": {
+          "visibleBox": {
+            "left": 172,
+            "top": 161,
+            "right": 1049,
+            "bottom": 1031
+          },
+          "source": "public/camo/perple/camo_water.png",
+          "backup": "Camo_asset/untrimmed-public/perple/camo_water.png"
+        }
+      }
+    }
+  }
+}

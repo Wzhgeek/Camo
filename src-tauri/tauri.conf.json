@@ -13,14 +13,16 @@
     "windows": [
       {
         "title": "Camo",
-        "width": 560,
-        "height": 560,
-        "minWidth": 280,
-        "minHeight": 220,
+        "width": 180,
+        "height": 210,
+        "minWidth": 90,
+        "minHeight": 105,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
         "resizable": false,
+        "skipTaskbar": true,
         "shadow": false,
         "backgroundColor": [0, 0, 0, 0]
       }
