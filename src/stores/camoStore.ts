@@ -12,7 +12,7 @@ export const useCamoStore = defineStore("camo", () => {
   const state = ref<CamoState>(reduceCamoState({ type: "APP_READY" }));
   const idleFrame = ref(0);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let idleCycleTimer: ReturnType<typeof setInterval> | undefined;
+  let idleCycleTimer: ReturnType<typeof setTimeout> | undefined;
 
   const settingsStore = useSettingsStore();
 
@@ -31,13 +31,16 @@ export const useCamoStore = defineStore("camo", () => {
   function startIdleCycle() {
     stopIdleCycle();
     idleFrame.value = 0;
-    idleCycleTimer = setInterval(() => {
+    const scheduleNextFrame = () => {
       idleFrame.value = (idleFrame.value + 1) % IDLE_FRAME_COUNT;
-    }, IDLE_CYCLE_INTERVAL);
+      const delay = IDLE_CYCLE_MIN + Math.floor(Math.random() * (IDLE_CYCLE_MAX - IDLE_CYCLE_MIN));
+      idleCycleTimer = setTimeout(scheduleNextFrame, delay);
+    };
+    idleCycleTimer = setTimeout(scheduleNextFrame, IDLE_CYCLE_MIN);
   }
 
   function stopIdleCycle() {
-    if (idleCycleTimer) { clearInterval(idleCycleTimer); idleCycleTimer = undefined; }
+    if (idleCycleTimer) { clearTimeout(idleCycleTimer); idleCycleTimer = undefined; }
     idleFrame.value = 0;
   }
 
