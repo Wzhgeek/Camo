@@ -16,7 +16,7 @@ const camo = useCamoStore();
 const chatStore = useChatStore();
 const reminderStore = useReminderStore();
 const settingsStore = useSettingsStore();
-const { state, asset } = storeToRefs(camo);
+const { state, asset, idleVideo } = storeToRefs(camo);
 const { llmPhase } = storeToRefs(chatStore);
 const panelOpen = ref(false);
 const settingsOpen = ref(false);
@@ -124,6 +124,7 @@ function handleWheel(e: WheelEvent) {
     <CamoPet
       :state="state"
       :asset="asset"
+      :idle-video="idleVideo"
       :panel-open="panelOpen"
       :scale="scale"
       :offset="petOffset"

@@ -3,7 +3,7 @@ import { ref, watch } from "vue";
 import type { LLMConfig } from "../core/llm/types";
 import { defaultLLMConfig } from "../core/llm/types";
 import { dbAll, dbRun } from "../core/storage/database";
-import type { CamoTheme } from "../core/camo/assets";
+import { isCamoTheme, type CamoTheme } from "../core/camo/assets";
 
 export interface WaterReminderConfig {
   enabled: boolean;
@@ -31,23 +31,33 @@ const defaultSettings: CamoSettings = {
   theme: "grey",
 };
 
+function normalizeSettings(settings: CamoSettings): CamoSettings {
+  return {
+    ...defaultSettings,
+    ...settings,
+    llm: { ...defaultLLMConfig, ...settings.llm },
+    waterReminder: { ...defaultSettings.waterReminder, ...settings.waterReminder },
+    theme: isCamoTheme(settings.theme) ? settings.theme : "grey",
+  };
+}
+
 function loadSettings(): CamoSettings {
   try {
     const rows = dbAll<{ key: string; value: string }>("SELECT key, value FROM settings");
     if (rows.length > 0) {
       const map: Record<string, string> = {};
       for (const r of rows) map[r.key] = r.value;
-      return {
+      return normalizeSettings({
         llm: map.llm ? JSON.parse(map.llm) : { ...defaultLLMConfig },
         waterReminder: map.waterReminder ? JSON.parse(map.waterReminder) : defaultSettings.waterReminder,
         systemPrompt: map.systemPrompt ?? defaultSettings.systemPrompt,
         theme: (map.theme as CamoTheme) ?? "grey",
-      };
+      });
     }
   } catch {}
   try {
     const raw = localStorage.getItem("camo.settings");
-    if (raw) return { ...defaultSettings, ...JSON.parse(raw) };
+    if (raw) return normalizeSettings({ ...defaultSettings, ...JSON.parse(raw) });
   } catch {}
   return { ...defaultSettings };
 }

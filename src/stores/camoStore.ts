@@ -5,7 +5,8 @@ import { reduceCamoState, type CamoEvent, type CamoState } from "../core/camo/st
 import { useSettingsStore } from "./settingsStore";
 
 const IDLE_FRAME_COUNT = 6;
-const IDLE_CYCLE_INTERVAL = 3000;
+const IDLE_CYCLE_MIN = 12_000;
+const IDLE_CYCLE_MAX = 25_000;
 
 export const useCamoStore = defineStore("camo", () => {
   const state = ref<CamoState>(reduceCamoState({ type: "APP_READY" }));

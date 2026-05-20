@@ -2,6 +2,10 @@ import type { CamoState } from "./state";
 
 export type CamoTheme = "grey" | "perple";
 
+export function isCamoTheme(theme: unknown): theme is CamoTheme {
+  return theme === "grey" || theme === "perple";
+}
+
 const stateToFile: Record<CamoState, string> = {
   idle: "camo_idle.png",
   happy: "camo_happy.png",
