@@ -1,11 +1,17 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Reminder } from "../core/reminder/types";
+import { reminderService } from "../core/reminder/reminderService";
 
 export const useReminderStore = defineStore("reminder", () => {
   const activeReminder = ref<Reminder | null>(null);
   const nextWaterAt = ref<number>(0);
   const nextTriggerMap = ref<Record<string, number>>({});
+  const reminders = ref<Reminder[]>([]);
+
+  function refreshReminders() {
+    reminders.value = reminderService.list();
+  }
 
   function trigger(reminder: Reminder) {
     activeReminder.value = reminder;
@@ -23,5 +29,7 @@ export const useReminderStore = defineStore("reminder", () => {
     nextTriggerMap.value = { ...nextTriggerMap.value, [id]: ts };
   }
 
-  return { activeReminder, nextWaterAt, nextTriggerMap, trigger, dismiss, setNextWaterAt, setNextTrigger };
+  refreshReminders();
+
+  return { activeReminder, nextWaterAt, nextTriggerMap, reminders, trigger, dismiss, setNextWaterAt, setNextTrigger, refreshReminders };
 });

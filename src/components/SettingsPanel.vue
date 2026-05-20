@@ -2,14 +2,16 @@
 import { ref, computed, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useSettingsStore } from "../stores/settingsStore";
+import { PROVIDER_PRESETS } from "../core/llm/types";
+import type { LLMProviderName } from "../core/llm/types";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right" }>();
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 
-const tab = ref<"llm" | "prompt" | "reminder" | "appearance" | "about">("llm");
-const provider = ref(settings.value.llm.provider);
+const tab = ref<"llm" | "prompt" | "appearance" | "about">("llm");
+const provider = ref<LLMProviderName>(settings.value.llm.provider);
 const baseUrl = ref(settings.value.llm.baseUrl);
 const apiKey = ref(settings.value.llm.apiKey);
 const model = ref(settings.value.llm.model);
@@ -40,6 +42,14 @@ watch(() => settings.value.llm, (llm) => {
 watch(() => settings.value.systemPrompt, (p) => {
   systemPrompt.value = p;
 }, { immediate: true });
+
+function onProviderChange() {
+  const preset = PROVIDER_PRESETS[provider.value];
+  if (preset) {
+    baseUrl.value = preset.baseUrl;
+    model.value = preset.defaultModel;
+  }
+}
 
 function save() {
   store.updateLLM({
@@ -85,7 +95,6 @@ function onDragEnd() { dragging.value = false; }
     <div class="tabs">
       <button :class="{ active: tab === 'llm' }" @click="tab = 'llm'">LLM</button>
       <button :class="{ active: tab === 'prompt' }" @click="tab = 'prompt'">提示词</button>
-      <button :class="{ active: tab === 'reminder' }" @click="tab = 'reminder'">提醒</button>
       <button :class="{ active: tab === 'appearance' }" @click="tab = 'appearance'">外观</button>
       <button :class="{ active: tab === 'about' }" @click="tab = 'about'">关于</button>
     </div>
@@ -93,10 +102,9 @@ function onDragEnd() { dragging.value = false; }
     <div class="tab-body">
       <div v-show="tab === 'llm'" class="tab-content">
         <div class="row">
-          <label>Provider</label>
-          <select v-model="provider">
-            <option value="openai">OpenAI</option>
-            <option value="ollama">Ollama</option>
+          <label>供应商</label>
+          <select v-model="provider" @change="onProviderChange">
+            <option v-for="(preset, key) in PROVIDER_PRESETS" :key="key" :value="key">{{ preset.label }}</option>
           </select>
         </div>
         <div class="row">
@@ -109,41 +117,13 @@ function onDragEnd() { dragging.value = false; }
         </div>
         <div class="row">
           <label>Model</label>
-          <input v-model="model" placeholder="qwen3.5:2b" />
+          <input v-model="model" placeholder="模型名称" />
         </div>
       </div>
 
       <div v-show="tab === 'prompt'" class="tab-content">
         <p class="hint">开场系统提示词，定义 Camo 的人格和行为</p>
         <textarea v-model="systemPrompt" rows="6" class="prompt-area"></textarea>
-      </div>
-
-      <div v-show="tab === 'reminder'" class="tab-content">
-        <div class="row">
-          <label>喝水提醒</label>
-          <input type="checkbox" v-model="settings.waterReminder.enabled" @change="store.updateWaterReminder({ enabled: settings.waterReminder.enabled })" />
-        </div>
-        <template v-if="settings.waterReminder.enabled">
-          <div class="row">
-            <label>间隔(分钟)</label>
-            <input type="number" min="10" max="240"
-              :value="settings.waterReminder.intervalMinutes"
-              @change="store.updateWaterReminder({ intervalMinutes: +($event.target as HTMLInputElement).value })"
-            />
-          </div>
-          <div class="row">
-            <label>开始时间</label>
-            <input type="time" :value="settings.waterReminder.startTime"
-              @change="store.updateWaterReminder({ startTime: ($event.target as HTMLInputElement).value })"
-            />
-          </div>
-          <div class="row">
-            <label>结束时间</label>
-            <input type="time" :value="settings.waterReminder.endTime"
-              @change="store.updateWaterReminder({ endTime: ($event.target as HTMLInputElement).value })"
-            />
-          </div>
-        </template>
       </div>
 
       <div v-show="tab === 'appearance'" class="tab-content">
@@ -171,7 +151,9 @@ function onDragEnd() { dragging.value = false; }
       <div v-show="tab === 'about'" class="tab-content about">
         <p><b>Camo</b> — 轻量桌宠助手</p>
         <p>Tauri 2 + Vue 3 + TypeScript</p>
-        <p style="opacity:0.6;font-size:10px">v0.2.0</p>
+        <p>开发者：<b>wangzihan</b></p>
+        <p>GitHub：<a href="https://github.com/wzhgeek/camo" target="_blank">wzhgeek/camo</a></p>
+        <p style="opacity:0.6;font-size:10px;margin-top:6px">v0.2.2</p>
       </div>
     </div>
 

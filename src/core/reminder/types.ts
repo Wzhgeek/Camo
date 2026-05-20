@@ -1,5 +1,5 @@
 export type ReminderType = "normal" | "water" | "exercise";
-export type ScheduleKind = "once" | "daily" | "interval" | "fixedTimes";
+export type ScheduleKind = "once" | "daily" | "interval" | "fixedTimes" | "workdays" | "weekends" | "date_range";
 
 export interface ReminderInput {
   title: string;

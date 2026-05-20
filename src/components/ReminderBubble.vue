@@ -9,7 +9,15 @@ const reminder = useReminderStore();
 const camo = useCamoStore();
 const { activeReminder } = storeToRefs(reminder);
 
+function disableIfOnce() {
+  if (activeReminder.value?.scheduleKind === "once") {
+    reminderService.update(activeReminder.value.id, { enabled: false });
+    reminder.refreshReminders();
+  }
+}
+
 function done() {
+  disableIfOnce();
   camo.transition({ type: "TASK_DONE" });
   camo.returnToIdle(1200);
   reminder.dismiss();
@@ -28,6 +36,7 @@ function later() {
 }
 
 function skip() {
+  disableIfOnce();
   reminder.dismiss();
   camo.returnToIdle(400);
 }

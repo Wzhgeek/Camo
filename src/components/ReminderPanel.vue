@@ -4,7 +4,7 @@ import { storeToRefs } from "pinia";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useReminderStore } from "../stores/reminderStore";
 import { reminderService } from "../core/reminder/reminderService";
-import type { Reminder, ReminderType, ScheduleKind } from "../core/reminder/types";
+import type { ReminderType, ScheduleKind, Reminder } from "../core/reminder/types";
 import { Droplets, Bell } from "lucide-vue-next";
 
 const emit = defineEmits<{ close: [] }>();
@@ -12,9 +12,8 @@ const props = defineProps<{ petSide?: "left" | "right" }>();
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 const reminderStoreRef = useReminderStore();
-const { nextWaterAt, nextTriggerMap } = storeToRefs(reminderStoreRef);
+const { nextWaterAt, nextTriggerMap, reminders } = storeToRefs(reminderStoreRef);
 
-const reminders = ref<Reminder[]>(reminderService.list());
 const now = ref(Date.now());
 let tickTimer: number | undefined;
 
@@ -83,10 +82,9 @@ function countdown(r: Reminder): string {
     const time = r.schedulePayload.time as string | undefined;
     if (!time) return "每天";
     const [h, m] = time.split(":").map(Number);
-    const todayTarget = new Date();
-    todayTarget.setHours(h, m, 0, 0);
-    if (todayTarget.getTime() <= now.value) todayTarget.setDate(todayTarget.getDate() + 1);
-    return formatCountdown(todayTarget.getTime() - now.value);
+    const candidate = new Date(); candidate.setHours(h, m, 0, 0);
+    if (candidate.getTime() <= now.value) candidate.setDate(candidate.getDate() + 1);
+    return formatCountdown(candidate.getTime() - now.value);
   }
   const runAt = r.schedulePayload.runAt as string | undefined;
   if (!runAt) return "--";
@@ -95,12 +93,12 @@ function countdown(r: Reminder): string {
   return formatCountdown(diff);
 }
 
-function scheduleLabel(r: Reminder): string {
-  const map: Record<string, string> = { once: "一次", daily: "每天", interval: "循环", fixedTimes: "定时" };
+function scheduleLabel(r: { scheduleKind: string }): string {
+  const map: Record<string, string> = {
+    once: "一次", daily: "每天", interval: "循环",
+  };
   return map[r.scheduleKind] || r.scheduleKind;
 }
-
-function refresh() { reminders.value = reminderService.list(); }
 
 function saveWater() {
   store.updateWaterReminder({
@@ -113,11 +111,13 @@ function saveWater() {
 
 function createReminder() {
   let payload: Record<string, unknown> = {};
-  if (formKind.value === "once" || formKind.value === "daily") {
+  if (formKind.value === "once") {
     const dt = formDate.value && formTime.value
       ? new Date(`${formDate.value}T${formTime.value}`).toISOString()
-      : new Date(Date.now() + formInterval.value * 60000).toISOString();
-    payload = { runAt: dt, time: formTime.value };
+      : new Date(Date.now() + 60 * 60000).toISOString();
+    payload = { runAt: dt };
+  } else if (formKind.value === "daily") {
+    payload = { time: formTime.value || "09:00" };
   } else if (formKind.value === "interval") {
     payload = { intervalMinutes: formInterval.value };
   }
@@ -127,15 +127,13 @@ function createReminder() {
     scheduleKind: formKind.value,
     schedulePayload: payload,
   });
-  formTitle.value = "";
-  formDate.value = "";
-  formTime.value = "";
+  formTitle.value = ""; formDate.value = ""; formTime.value = "";
   showForm.value = false;
-  refresh();
+  reminderStoreRef.refreshReminders();
 }
 
-function deleteReminder(id: string) { reminderService.delete(id); refresh(); }
-function toggleReminder(id: string, enabled: boolean) { reminderService.update(id, { enabled }); refresh(); }
+function deleteReminder(id: string) { reminderService.delete(id); reminderStoreRef.refreshReminders(); }
+function toggleReminder(id: string, enabled: boolean) { reminderService.update(id, { enabled }); reminderStoreRef.refreshReminders(); }
 
 function onDragStart(e: PointerEvent) {
   dragging.value = true;
@@ -221,6 +219,7 @@ function onDragEnd() { dragging.value = false; }
             <input type="number" v-model.number="formInterval" min="1" class="num-input" />
             <span class="unit">分钟</span>
           </div>
+
           <button class="confirm-btn" @click="createReminder">创建</button>
         </div>
 
