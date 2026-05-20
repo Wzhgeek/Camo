@@ -71,6 +71,7 @@ function onPetClick() {
 
 <template>
   <section
+    data-camo-surface
     class="pet-shell"
     :class="{ 'panel-open': panelOpen }"
     :style="{ zoom: scale, transform: `translate(${offset.x}px, ${offset.y}px)` }"

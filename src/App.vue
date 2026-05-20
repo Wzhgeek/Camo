@@ -88,9 +88,26 @@ watch(llmPhase, (phase) => {
 });
 
 function handlePetClick() {
-  panelOpen.value = !panelOpen.value;
+  const nextPanelOpen = !panelOpen.value;
+  panelOpen.value = nextPanelOpen;
+  if (nextPanelOpen) {
+    settingsOpen.value = false;
+    reminderPanelOpen.value = false;
+  }
   camo.transition({ type: "PET_CLICKED" });
   camo.returnToIdle(400);
+}
+
+function closeChatPanel() {
+  panelOpen.value = false;
+}
+
+function closeSettingsPanel() {
+  settingsOpen.value = false;
+}
+
+function closeReminderPanel() {
+  reminderPanelOpen.value = false;
 }
 
 function handlePetDrag(pos: { x: number; y: number }) {
@@ -113,11 +130,15 @@ function closeContextMenu() {
 
 function openSettings() {
   contextMenu.value.show = false;
+  panelOpen.value = false;
+  reminderPanelOpen.value = false;
   settingsOpen.value = true;
 }
 
 function openReminders() {
   contextMenu.value.show = false;
+  panelOpen.value = false;
+  settingsOpen.value = false;
   reminderPanelOpen.value = true;
 }
 
@@ -150,7 +171,7 @@ function handleWheel(e: WheelEvent) {
   >
     <ChatPanel
       v-show="panelOpen"
-      @close="panelOpen = false"
+      @close="closeChatPanel"
     />
     <CamoPet
       :state="state"
@@ -165,6 +186,7 @@ function handleWheel(e: WheelEvent) {
 
     <div
       v-if="contextMenu.show"
+      data-camo-surface
       class="context-menu"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
@@ -174,8 +196,8 @@ function handleWheel(e: WheelEvent) {
       <button class="context-item danger" @click="exitApp">退出 Camo</button>
     </div>
 
-    <SettingsPanel v-if="settingsOpen" :pet-side="petSide" @close="settingsOpen = false" />
-    <ReminderPanel v-if="reminderPanelOpen" :pet-side="petSide" @close="reminderPanelOpen = false" />
+    <SettingsPanel v-if="settingsOpen" :pet-side="petSide" @close="closeSettingsPanel" />
+    <ReminderPanel v-if="reminderPanelOpen" :pet-side="petSide" @close="closeReminderPanel" />
     <ReminderBubble />
   </main>
 </template>

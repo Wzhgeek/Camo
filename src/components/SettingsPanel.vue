@@ -4,9 +4,11 @@ import { storeToRefs } from "pinia";
 import { useSettingsStore } from "../stores/settingsStore";
 import { PROVIDER_PRESETS } from "../core/llm/types";
 import type { LLMProviderName } from "../core/llm/types";
+import { isTauri } from "../core/platform";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right" }>();
+const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 
@@ -21,6 +23,8 @@ const saved = ref(false);
 const pos = ref({ x: 0, y: 0 });
 const dragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
+const pointerDownPos = ref({ x: 0, y: 0 });
+const DRAG_THRESHOLD = 5;
 
 const panelStyle = computed(() => {
   if (pos.value.x !== 0 || pos.value.y !== 0) {
@@ -67,11 +71,20 @@ function cancel() { emit("close"); }
 
 function onDragStart(e: PointerEvent) {
   dragging.value = true;
+  pointerDownPos.value = { x: e.clientX, y: e.clientY };
   dragStart.value = { x: e.clientX - pos.value.x, y: e.clientY - pos.value.y };
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
 function onDragMove(e: PointerEvent) {
   if (!dragging.value) return;
+  if (isTauri) {
+    const dx = e.clientX - pointerDownPos.value.x;
+    const dy = e.clientY - pointerDownPos.value.y;
+    if (Math.abs(dx) <= DRAG_THRESHOLD && Math.abs(dy) <= DRAG_THRESHOLD) return;
+    dragging.value = false;
+    tauriWindow!.then(({ getCurrentWindow }) => getCurrentWindow().startDragging()).catch(() => {});
+    return;
+  }
   pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
 }
 function onDragEnd() { dragging.value = false; }
@@ -79,6 +92,7 @@ function onDragEnd() { dragging.value = false; }
 
 <template>
   <div
+    data-camo-surface
     class="settings-panel"
     :style="panelStyle"
   >
@@ -87,6 +101,7 @@ function onDragEnd() { dragging.value = false; }
       @pointerdown="onDragStart"
       @pointermove="onDragMove"
       @pointerup="onDragEnd"
+      @pointercancel="onDragEnd"
     >
       <span class="title">设置</span>
       <button class="close-btn" @pointerdown.stop @click="cancel">×</button>
@@ -173,7 +188,7 @@ function onDragEnd() { dragging.value = false; }
   max-width: 500px;
   min-height: 240px;
   max-height: 450px;
-  resize: both;
+  resize: none;
   overflow: hidden;
   background: rgba(255,255,255,0.97);
   border-radius: 10px;

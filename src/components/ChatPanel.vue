@@ -3,10 +3,12 @@ import { computed, nextTick, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { marked } from "marked";
 import { useChatStore } from "../stores/chatStore";
+import { isTauri } from "../core/platform";
 
 marked.setOptions({ breaks: true, gfm: true });
 
-const emit = defineEmits<{ close: []; drag: [pos: { x: number; y: number }] }>();
+const emit = defineEmits<{ close: [] }>();
+const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const chat = useChatStore();
 const { messages, isResponding, sessions, activeSessionId } = storeToRefs(chat);
@@ -40,20 +42,30 @@ function renderMd(text: string): string {
 }
 
 const dragging = ref(false);
-const dragStart = ref({ x: 0, y: 0 });
-const pos = ref({ x: 0, y: 0 });
+const pointerDownPos = ref({ x: 0, y: 0 });
+const DRAG_THRESHOLD = 5;
 
-function onDragStart(e: PointerEvent) {
+function onHeaderPointerDown(e: PointerEvent) {
   dragging.value = true;
-  dragStart.value = { x: e.clientX - pos.value.x, y: e.clientY - pos.value.y };
+  pointerDownPos.value = { x: e.clientX, y: e.clientY };
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 }
-function onDragMove(e: PointerEvent) {
+
+function onHeaderPointerMove(e: PointerEvent) {
   if (!dragging.value) return;
-  pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
-  emit("drag", pos.value);
+  const dx = e.clientX - pointerDownPos.value.x;
+  const dy = e.clientY - pointerDownPos.value.y;
+  if (Math.abs(dx) <= DRAG_THRESHOLD && Math.abs(dy) <= DRAG_THRESHOLD) return;
+
+  dragging.value = false;
+  if (isTauri) {
+    tauriWindow!.then(({ getCurrentWindow }) => getCurrentWindow().startDragging()).catch(() => {});
+  }
 }
-function onDragEnd() { dragging.value = false; }
+
+function onHeaderPointerUp() {
+  dragging.value = false;
+}
 
 async function submitMessage() {
   if (!canSend.value) return;
@@ -73,12 +85,13 @@ watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
 </script>
 
 <template>
-  <aside class="chat-panel" :style="{ transform: `translate(${pos.x}px, ${pos.y}px)` }" @click="closeDropdown">
+  <aside data-camo-surface class="chat-panel" @click="closeDropdown">
     <header
       class="chat-header"
-      @pointerdown="onDragStart"
-      @pointermove="onDragMove"
-      @pointerup="onDragEnd"
+      @pointerdown="onHeaderPointerDown"
+      @pointermove="onHeaderPointerMove"
+      @pointerup="onHeaderPointerUp"
+      @pointercancel="onHeaderPointerUp"
     >
       <p class="eyebrow">Camo</p>
       <div class="header-right">

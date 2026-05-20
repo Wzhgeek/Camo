@@ -43,7 +43,7 @@ function skip() {
 </script>
 
 <template>
-  <div v-if="activeReminder" class="reminder-bubble" @click.stop>
+  <div v-if="activeReminder" data-camo-surface class="reminder-bubble" @click.stop>
     <div class="bubble-icon">
       <Droplets v-if="activeReminder.type === 'water'" :size="28" color="#7c3aed" />
       <Dumbbell v-else-if="activeReminder.type === 'exercise'" :size="28" color="#22c55e" />
