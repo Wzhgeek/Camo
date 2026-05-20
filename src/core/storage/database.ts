@@ -9,7 +9,7 @@ export async function initDatabase(): Promise<void> {
   if (db) return;
 
   const SQL = await initSqlJs({
-    locateFile: (file: string) => `https://sql.js.org/dist/${file}`,
+    locateFile: (_file: string) => "/sql-wasm.wasm",
   });
 
   const saved = await loadFromIndexedDB();

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { CamoState } from "../core/camo/state";
+import { isTauri } from "../core/platform";
+
+const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const props = defineProps<{
   state: CamoState;
@@ -16,7 +19,6 @@ const emit = defineEmits<{
   drag: [pos: { x: number; y: number }];
 }>();
 
-const isTauri = !!((window as any).__TAURI_INTERNALS__);
 const dragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
 const pointerDownPos = ref({ x: 0, y: 0 });
@@ -30,16 +32,6 @@ const DBLCLICK_DELAY = 300;
 function onPointerDown(e: PointerEvent) {
   hasDragged.value = false;
   pointerDownPos.value = { x: e.clientX, y: e.clientY };
-
-  if (isTauri) {
-    import("@tauri-apps/api/window")
-      .then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
-      .catch(() => {});
-    // still track movement for drag detection in Tauri mode
-    dragging.value = true;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    return;
-  }
   dragging.value = true;
   dragStart.value = { x: e.clientX - props.offset.x, y: e.clientY - props.offset.y };
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -52,6 +44,11 @@ function onPointerMove(e: PointerEvent) {
     hasDragged.value = true;
   }
   if (!dragging.value) return;
+  if (isTauri) {
+    dragging.value = false;
+    tauriWindow!.then(({ getCurrentWindow }) => getCurrentWindow().startDragging()).catch(() => {});
+    return;
+  }
   emit("drag", { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y });
 }
 

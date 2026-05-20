@@ -11,6 +11,7 @@ import { useChatStore } from "./stores/chatStore";
 import { useReminderStore } from "./stores/reminderStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { ReminderScheduler } from "./core/reminder/scheduler";
+import { isTauri } from "./core/platform";
 
 const camo = useCamoStore();
 const chatStore = useChatStore();
@@ -22,7 +23,7 @@ const panelOpen = ref(false);
 const settingsOpen = ref(false);
 const reminderPanelOpen = ref(false);
 const scale = ref(settingsStore.settings.layout.scale);
-const petOffset = ref({ x: settingsStore.settings.layout.offsetX, y: settingsStore.settings.layout.offsetY });
+const petOffset = ref(isTauri ? { x: 0, y: 0 } : { x: settingsStore.settings.layout.offsetX, y: settingsStore.settings.layout.offsetY });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 
 const petSide = computed<"left" | "right">(() => {
@@ -93,6 +94,7 @@ function handlePetClick() {
 }
 
 function handlePetDrag(pos: { x: number; y: number }) {
+  if (isTauri) return;
   petOffset.value = pos;
   settingsStore.updateLayout({ offsetX: pos.x, offsetY: pos.y });
 }
