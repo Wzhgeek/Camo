@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import CamoPet from "./components/CamoPet.vue";
 import ChatPanel from "./components/ChatPanel.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import ReminderPanel from "./components/ReminderPanel.vue";
+import NotesPanel from "./components/NotesPanel.vue";
+import StickyNoteWindow from "./components/StickyNoteWindow.vue";
 import ReminderBubble from "./components/ReminderBubble.vue";
 import { useCamoStore } from "./stores/camoStore";
 import { useChatStore } from "./stores/chatStore";
@@ -20,7 +22,9 @@ import {
   installWindowFramePersistence,
   openContextMenuWindow,
   openReminderAlertWindow,
+  openStickyNoteWindow,
   openToolWindow,
+  openUpdateDialogWindow,
   resetCurrentWindowPosition,
   syncPetWindowSize,
   toggleToolWindow,
@@ -28,6 +32,7 @@ import {
 import { applyAppearance, darkModeLabel, nextDarkModePreference } from "./core/appearance";
 import { playReminderSound, playSoundFile } from "./core/audio";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { version as appVersion } from "../package.json";
 
 const camo = useCamoStore();
 const chatStore = useChatStore();
@@ -41,6 +46,7 @@ const petOffset = ref({ x: 0, y: 0 });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 const isPetWindow = computed(() => currentWindowKind === "pet");
 const isContextMenuWindow = computed(() => currentWindowKind === "context-menu");
+const isUpdateDialog = computed(() => currentWindowKind === "update-dialog");
 const currentBehavior = computed(() => isPetWindow.value
   ? settingsStore.settings.windowPreferences.pet
   : settingsStore.settings.windowPreferences.tools);
@@ -52,6 +58,11 @@ const petSide = computed<"left" | "right">(() => {
 });
 
 let reminderSoundTimer: ReturnType<typeof setInterval> | undefined;
+type UpdateDialogData = {
+  status?: "checking" | "available" | "latest" | "error" | "downloading" | "installed";
+  version?: string;
+  message?: string;
+};
 
 function stopReminderSoundLoop() {
   if (reminderSoundTimer) {
@@ -77,6 +88,7 @@ const scheduler = new ReminderScheduler(
     const typeMap = { water: "water", exercise: "exercise", normal: "normal" } as const;
     const t = typeMap[reminder.type];
     const app = settingsStore.settings.appearance;
+    affectionStore.logEvent(`reminder_triggered_${t}`, 0);
     if (app.reminderSound !== "off") startReminderSoundLoop(t, app.soundVolume);
     camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
     if (isTauri) {
@@ -98,9 +110,13 @@ watch(() => reminderStore.activeReminder, (val) => {
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const skipCounts: Record<string, number> = {};
 const showToast = ref(false);
+const isFocusing = ref(false);
+const focusRemaining = ref(0);
+let focusTimer: ReturnType<typeof setInterval> | undefined;
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
 let frameUnlisteners: UnlistenFn[] = [];
 let focusUnlisten: UnlistenFn | undefined;
+let updateDialogUnlisten: UnlistenFn | undefined;
 let lastReminderActionAt = 0;
 
 function applyLocalWindowVariables() {
@@ -128,6 +144,7 @@ function handleReminderAction(payload: { action?: string; reminderId?: string; r
   if (!isPetWindow.value || createdAt <= lastReminderActionAt) return;
   lastReminderActionAt = createdAt;
   if (action === "later") {
+    affectionStore.logEvent("reminder_later", 0);
     if (payload.reminderType === "water" || payload.reminderId === "__water__") {
       scheduler.snoozeWater(10);
     } else if (payload.reminderId) {
@@ -141,6 +158,7 @@ function handleReminderAction(payload: { action?: string; reminderId?: string; r
     skipCounts[payload.reminderType ?? ""] = 0;
     affectionStore.adjust("reminder_done", 3);
   } else if (action === "skip") {
+    affectionStore.logEvent("reminder_skip", 0);
     const t = payload.reminderType ?? "normal";
     skipCounts[t] = (skipCounts[t] ?? 0) + 1;
     if (skipCounts[t] >= 3) {
@@ -156,11 +174,163 @@ function handleBeforeUnload() {
   affectionStore.markClose();
 }
 
-function handleReminderActionStorage(e: StorageEvent) {
-  if (e.key !== "camo.reminderAction" || !e.newValue) return;
+function handleStorageEvent(e: StorageEvent) {
+  if (!e.newValue) return;
   try {
-    handleReminderAction(JSON.parse(e.newValue));
+    if (e.key === "camo.reminderAction") {
+      handleReminderAction(JSON.parse(e.newValue));
+    } else if (e.key === TOAST_KEY) {
+      const data = JSON.parse(e.newValue);
+      if (data.msg === "check-update") {
+        runUpdateCheck();
+      } else {
+        showToastMsg(data.msg, data.duration ?? 3000);
+      }
+    } else if (e.key === "camo:command") {
+      const data = JSON.parse(e.newValue);
+      if (data.cmd === "open-settings") void openToolWindow("settings");
+      if (data.cmd === "toggle-focus") {
+        if (isFocusing.value) stopFocusMode();
+        else startFocusMode();
+      }
+    }
   } catch {}
+}
+
+const updateData = ref<UpdateDialogData>({});
+
+function readUpdateInfo() {
+  try {
+    const raw = localStorage.getItem("camo:updateInfo");
+    if (raw) updateData.value = JSON.parse(raw);
+  } catch {}
+}
+
+async function publishUpdateDialogData(data: UpdateDialogData) {
+  try { localStorage.setItem("camo:updateInfo", JSON.stringify(data)); } catch {}
+  if (isUpdateDialog.value) {
+    updateData.value = data;
+    await fitUpdateDialogWindow();
+    return;
+  }
+  if (!isTauri) return;
+  try {
+    const { emitTo } = await import("@tauri-apps/api/event");
+    await emitTo("update-dialog", "camo-update-info", data);
+  } catch {}
+}
+
+async function fitUpdateDialogWindow() {
+  if (!isTauri || !isUpdateDialog.value) return;
+  await nextTick();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const surface = document.querySelector<HTMLElement>(".update-dialog");
+  if (!surface) return;
+  const rect = surface.getBoundingClientRect();
+  try {
+    const { LogicalPosition, LogicalSize, currentMonitor, getCurrentWindow, primaryMonitor } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    const monitor = await currentMonitor().then((m) => m ?? primaryMonitor()).catch(() => null);
+    const scaleFactor = monitor?.scaleFactor || 1;
+    const workArea = monitor
+      ? {
+          x: monitor.workArea.position.x / scaleFactor,
+          y: monitor.workArea.position.y / scaleFactor,
+          width: monitor.workArea.size.width / scaleFactor,
+          height: monitor.workArea.size.height / scaleFactor,
+        }
+      : null;
+    const maxWidth = workArea ? Math.max(260, workArea.width - 24) : 520;
+    const width = Math.min(Math.max(Math.ceil(rect.width) + 18, 320), maxWidth);
+    const height = Math.max(Math.ceil(rect.height) + 4, 48);
+    await win.setSize(new LogicalSize(width, height));
+    if (workArea) {
+      await win.setPosition(new LogicalPosition(
+        Math.round(workArea.x + (workArea.width - width) / 2),
+        Math.round(workArea.y + (workArea.height - height) / 2),
+      ));
+    }
+    await win.show().catch(() => {});
+    await win.setFocus().catch(() => {});
+  } catch {}
+}
+
+function compareVersions(a: string, b: string) {
+  const pa = a.replace(/^v/, "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pb = b.replace(/^v/, "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function readLatestReleaseVersion() {
+  const response = await fetch("https://api.github.com/repos/Wzhgeek/Camo/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!response.ok) throw new Error(`GitHub latest release failed: ${response.status}`);
+  const data = await response.json() as { tag_name?: string; name?: string };
+  return (data.tag_name || data.name || "").replace(/^Camo\s+/i, "").trim();
+}
+
+async function publishFallbackUpdateResult() {
+  try {
+    const latest = await withTimeout(readLatestReleaseVersion(), 5000);
+    if (latest && compareVersions(latest, appVersion) > 0) {
+      await publishUpdateDialogData({ status: "available", version: latest });
+      return;
+    }
+    await publishUpdateDialogData({
+      status: "latest",
+      message: `当前版本 v${appVersion} 已是最新。`,
+    });
+  } catch {
+    await publishUpdateDialogData({ status: "error", message: "检查更新失败，请稍后重试。" });
+  }
+}
+
+async function performUpdateCheckInDialog() {
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await withTimeout(check(), 5000);
+    if (update) {
+      await publishUpdateDialogData({ status: "available", version: update.version });
+    } else {
+      await publishUpdateDialogData({
+        status: "latest",
+        message: `当前版本 v${appVersion} 已是最新。`,
+      });
+    }
+  } catch {
+    await publishFallbackUpdateResult();
+  }
+}
+
+async function runUpdateCheck() {
+  if (isPetWindow.value) showToastMsg("正在检查更新...");
+  else publishToast("正在检查更新...", 3000);
+  const checking: UpdateDialogData = { status: "checking", message: "正在检查更新..." };
+  await openUpdateDialogWindow(checking).catch(() => {
+    showToastMsg("更新窗口打开失败。", 3000);
+  });
 }
 
 watch(state, (s) => {
@@ -183,17 +353,39 @@ onMounted(() => {
       }).then((unlisten) => { focusUnlisten = unlisten; }).catch(() => {});
     }).catch(() => {});
   }
+  if (isUpdateDialog.value) {
+    readUpdateInfo();
+    void fitUpdateDialogWindow();
+    if (updateData.value.status === "checking") {
+      void performUpdateCheckInDialog();
+    }
+    if (isTauri) {
+      import("@tauri-apps/api/event").then(({ listen }) => {
+        listen<UpdateDialogData>("camo-update-info", async ({ payload }) => {
+          updateData.value = payload;
+          await fitUpdateDialogWindow();
+          if (payload.status === "checking") void performUpdateCheckInDialog();
+        }).then((unlisten) => { updateDialogUnlisten = unlisten; }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
 
   if (isPetWindow.value) {
     scheduler.start();
     syncPetWindowSize(scale.value);
+    settingsStore.settings.stickyNotes.forEach((note, index) => {
+      if (note.enabled && isTauri) void openStickyNoteWindow(note.id, index);
+    });
     window.addEventListener("mousemove", resetInactivityTimer, { passive: true });
     window.addEventListener("keydown", resetInactivityTimer, { passive: true });
     window.addEventListener("click", resetInactivityTimer, { passive: true });
-    window.addEventListener("storage", handleReminderActionStorage);
+    window.addEventListener("storage", handleStorageEvent);
     window.addEventListener("beforeunload", handleBeforeUnload);
     resetInactivityTimer();
     if (isTauri) {
+      import("@tauri-apps/api/event").then(({ listen }) => {
+        listen("camo-open-settings", () => { void openToolWindow("settings"); }).catch(() => {});
+      }).catch(() => {});
       import("@tauri-apps/plugin-updater").then(({ check }) =>
         check().then((update) => { if (update) void update.downloadAndInstall(); }).catch(() => {})
       ).catch(() => {});
@@ -206,24 +398,26 @@ onMounted(() => {
       affectionStore.adjust("online_hour", Math.min(Math.floor(hrs), 5));
     }
     if (hrs > 0.5 && _st.score > 70) {
-      setTimeout(() => showToast.value = true, 1500);
-      setTimeout(() => showToast.value = false, 4500);
+      setTimeout(() => showToastMsg("你回来啦！❤️", 3000), 1500);
     }
   }
 });
 
 onUnmounted(() => {
   stopReminderSoundLoop();
+  stopFocusMode();
   frameUnlisteners.forEach((unlisten) => unlisten());
   frameUnlisteners = [];
   focusUnlisten?.();
   focusUnlisten = undefined;
+  updateDialogUnlisten?.();
+  updateDialogUnlisten = undefined;
   if (isPetWindow.value) scheduler.stop();
   clearInactivityTimer();
   window.removeEventListener("mousemove", resetInactivityTimer);
   window.removeEventListener("keydown", resetInactivityTimer);
   window.removeEventListener("click", resetInactivityTimer);
-  window.removeEventListener("storage", handleReminderActionStorage);
+  window.removeEventListener("storage", handleStorageEvent);
   window.removeEventListener("beforeunload", handleBeforeUnload);
 });
 
@@ -295,11 +489,38 @@ function handleContextMenu(e: MouseEvent) {
     void openContextMenuWindow(e.clientX, e.clientY);
     return;
   }
-  const menuW = 100;
-  const menuH = 124;
-  const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-  const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-  contextMenu.value = { show: true, x, y };
+  contextMenu.value = {
+    show: true,
+    x: Math.min(e.clientX, window.innerWidth - 200),
+    y: e.clientY > window.innerHeight - 400 ? window.innerHeight - 400 : Math.max(4, e.clientY),
+  };
+}
+
+const toastMessage = ref("");
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+function showToastMsg(msg: string, duration = 3000) {
+  toastMessage.value = msg;
+  showToast.value = true;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { showToast.value = false; }, duration);
+}
+
+const TOAST_KEY = "camo:toast";
+
+function publishToast(msg: string, duration = 3000) {
+  try {
+    localStorage.setItem(TOAST_KEY, JSON.stringify({ msg, duration, t: Date.now() }));
+  } catch {}
+}
+
+async function handleCheckUpdate() {
+  if (isTauri) {
+    await runUpdateCheck();
+  } else {
+    showToastMsg("检查更新仅在桌面应用内可用。", 3000);
+  }
+  closeContextMenu();
 }
 
 function closeContextMenu() {
@@ -321,6 +542,50 @@ function openReminders() {
   void openToolWindow("reminders").finally(closeContextMenu);
 }
 
+function openNotes() {
+  void openToolWindow("notes").finally(closeContextMenu);
+}
+
+function startFocusMode() {
+  if (!isPetWindow.value) {
+    try { localStorage.setItem("camo:command", JSON.stringify({ cmd: "toggle-focus", t: Date.now() })); } catch {}
+    closeContextMenu();
+    return;
+  }
+  closeContextMenu();
+  const dur = settingsStore.settings.focusDuration * 60;
+  focusRemaining.value = dur;
+  isFocusing.value = true;
+  camo.transition({ type: "FOCUS_START" });
+  if (focusTimer) clearInterval(focusTimer);
+  focusTimer = setInterval(() => {
+    focusRemaining.value--;
+    if (focusRemaining.value <= 0) {
+      stopFocusMode();
+      showToastMsg("专注完成！休息一下吧。");
+      playReminderSound("exercise", settingsStore.settings.appearance.soundVolume);
+    }
+  }, 1000);
+}
+
+function stopFocusMode() {
+  if (!isPetWindow.value) {
+    try { localStorage.setItem("camo:command", JSON.stringify({ cmd: "toggle-focus", t: Date.now() })); } catch {}
+    closeContextMenu();
+    return;
+  }
+  if (focusTimer) { clearInterval(focusTimer); focusTimer = undefined; }
+  isFocusing.value = false;
+  focusRemaining.value = 0;
+  camo.returnToIdle(0);
+}
+
+function formatFocusTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 async function exitApp() {
   closeContextMenu();
   try {
@@ -330,6 +595,38 @@ async function exitApp() {
   } catch {
     window.close();
   }
+}
+
+async function doUpdate() {
+  publishToast("正在下载更新...", 5000);
+  await publishUpdateDialogData({ status: "downloading", message: "正在下载更新..." });
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    if (update) {
+      await update.downloadAndInstall();
+      publishToast("更新已安装，重启应用后生效。", 5000);
+      await publishUpdateDialogData({ status: "installed", message: "更新已安装，重启应用后生效。" });
+      await closeCurrentWindow();
+    } else {
+      await publishUpdateDialogData({ status: "latest", message: "当前已是最新版本。" });
+    }
+  } catch {
+    await publishUpdateDialogData({ status: "error", message: "下载更新失败，请稍后重试。" });
+  }
+}
+
+function closeUpdateDialog() {
+  closeCurrentWindow().catch(() => {});
+}
+
+function startUpdateDialogDrag(event: PointerEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("button")) return;
+  if (!isTauri) return;
+  import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
+    .catch(() => {});
 }
 
 function handleWheel(e: WheelEvent) {
@@ -372,7 +669,11 @@ function handleWheel(e: WheelEvent) {
     />
 
     <div v-if="showToast" class="startup-toast">
-      你回来啦！❤️
+      {{ toastMessage }}
+    </div>
+
+    <div v-if="isFocusing && isPetWindow" class="focus-timer">
+      {{ formatFocusTime(focusRemaining) }}
     </div>
 
     <div
@@ -385,17 +686,40 @@ function handleWheel(e: WheelEvent) {
     >
       <button class="context-item" @click="openSettings">设置</button>
       <button class="context-item" @click="openReminders">提醒</button>
+      <button class="context-item" @click="openNotes">便签</button>
       <button class="context-item" @click="toggleLock">{{ settingsStore.settings.windowPreferences.pet.locked ? '✓ 已锁定' : '锁定位置' }}</button>
       <button class="context-item" @click="toggleDarkMode">{{ darkModeLabel(settingsStore.settings.appearance.darkMode) }}</button>
+      <button v-if="isTauri" class="context-item" @click="handleCheckUpdate">检查更新</button>
+      <button class="context-item" @click="isFocusing ? stopFocusMode() : startFocusMode()">{{ isFocusing ? '停止专注' : '开始专注' }}</button>
       <button class="context-item danger" @click="exitApp">退出 Camo</button>
     </div>
 
+    <div v-if="isUpdateDialog" data-camo-surface class="update-dialog" @pointerdown="startUpdateDialogDrag" @click.stop>
+      <div v-if="updateData.status === 'checking' || updateData.status === 'downloading'" class="update-body">
+        <span class="update-msg">{{ updateData.message || '正在检查更新...' }}</span>
+      </div>
+      <div v-else-if="updateData.version" class="update-body">
+        <span class="update-msg">发现新版本 {{ updateData.version }}，是否下载？</span>
+        <div class="update-actions">
+          <button class="update-btn primary" @click="doUpdate">下载</button>
+          <button class="update-btn" @click="closeUpdateDialog">取消</button>
+        </div>
+      </div>
+      <div v-else class="update-body">
+        <span class="update-msg">{{ updateData.message || '当前已是最新版本。' }}</span>
+        <div class="update-actions">
+          <button class="update-btn primary" @click="closeUpdateDialog">确定</button>
+        </div>
+      </div>
+      <button class="update-close" aria-label="关闭" @click.stop="closeUpdateDialog">×</button>
+    </div>
     <SettingsPanel
       v-if="currentWindowKind === 'settings'"
       standalone
       :locked="currentBehavior.locked"
       :pet-side="petSide"
       @close="closeSettingsPanel"
+      @check-update="handleCheckUpdate"
     />
     <ReminderPanel
       v-if="currentWindowKind === 'reminders'"
@@ -404,6 +728,13 @@ function handleWheel(e: WheelEvent) {
       :pet-side="petSide"
       @close="closeReminderPanel"
     />
+    <NotesPanel
+      v-if="currentWindowKind === 'notes'"
+      standalone
+      :locked="currentBehavior.locked"
+      @close="closeCurrentWindow"
+    />
+    <StickyNoteWindow v-if="currentWindowKind === 'sticky-note'" />
     <ReminderBubble v-if="currentWindowKind === 'pet' || currentWindowKind === 'reminder-alert'" />
   </main>
 </template>
@@ -426,7 +757,9 @@ function handleWheel(e: WheelEvent) {
 }
 .camo-workspace.window-chat,
 .camo-workspace.window-settings,
-.camo-workspace.window-reminders {
+.camo-workspace.window-reminders,
+.camo-workspace.window-notes,
+.camo-workspace.window-sticky-note {
   display: block;
   padding: 0;
   background: transparent;
@@ -893,18 +1226,140 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
 .context-item:hover { background: rgba(127,90,240,0.1); color: var(--camo-menu-text); }
 .context-item.danger { color: #d92d20; }
 .context-item.danger:hover { background: rgba(217,45,32,0.08); color: #b42318; }
+.camo-workspace.window-update-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+.update-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 2px);
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--camo-surface-strong);
+  border: 1px solid var(--camo-border);
+  box-shadow: 0 6px 16px rgba(28, 20, 40, 0.10);
+  color: var(--camo-text);
+  font-size: 12px;
+  line-height: 1.2;
+  user-select: none;
+}
+.update-close {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px -4px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--camo-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.update-close:hover {
+  background: rgba(127,90,240,0.1);
+  color: var(--camo-text);
+}
+.update-body {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+}
+.update-msg {
+  flex: 0 0 auto;
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.update-actions {
+  display: flex;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+.update-btn {
+  min-width: 52px;
+  padding: 5px 13px;
+  border-radius: 9px;
+  border: 1px solid var(--camo-border);
+  background: var(--camo-surface);
+  color: var(--camo-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-btn:hover {
+  border-color: color-mix(in srgb, var(--camo-primary) 48%, var(--camo-border));
+}
+.update-btn.primary {
+  background: var(--camo-primary);
+  border-color: var(--camo-primary);
+  color: #fff;
+}
+.focus-timer {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--camo-surface-strong) 92%, transparent);
+  border: 1px solid var(--camo-border);
+  color: var(--camo-text);
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 8001;
+  pointer-events: none;
+}
+.sticky-note {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--camo-surface-strong) 85%, transparent);
+  border: 1px solid var(--camo-border);
+  color: var(--camo-muted);
+  font-size: 11px;
+  max-width: 300px;
+  z-index: 8000;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .startup-toast {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 10px 20px;
+  width: max-content;
+  max-width: calc(100vw - 12px);
+  padding: 8px 10px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--camo-surface-strong) 96%, transparent);
   border: 1px solid var(--camo-border);
   color: var(--camo-bubble-text);
-  font-size: 15px;
+  font-size: 13px;
+  line-height: 1.2;
   font-weight: 600;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
   z-index: 9999;
   pointer-events: none;
   animation: toast-fade 3s ease-out forwards;

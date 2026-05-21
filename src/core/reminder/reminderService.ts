@@ -1,5 +1,6 @@
 import type { Reminder, ReminderInput } from "./types";
 import { dbAll, dbGet, dbRun } from "../storage/database";
+import { logEvent } from "../affection/service";
 
 const STORAGE_KEY = "camo.reminders";
 
@@ -49,6 +50,7 @@ export class ReminderService {
       localStorage.setItem(STORAGE_KEY, JSON.stringify([...existingList, reminder]));
     }
     writeMirror([reminder, ...existingList]);
+    logEvent(`reminder_created_${reminder.type}`, 0);
     return reminder;
   }
 

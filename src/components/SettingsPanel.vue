@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { storeToRefs } from "pinia";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore, ROLE_LABELS } from "../stores/settingsStore";
 import { PROVIDER_PRESETS } from "../core/llm/types";
 import type { LLMProviderName } from "../core/llm/types";
 import { isTauri } from "../core/platform";
@@ -9,13 +9,15 @@ import { getAutostartEnabled, setAutostartEnabled } from "../core/autostart";
 import { version } from "../../package.json";
 import { playReminderSound, playSoundFile } from "../core/audio";
 import { useAffectionStore } from "../stores/affectionStore";
+import { useStatsStore } from "../stores/statsStore";
 
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; checkUpdate: [] }>();
 const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
 const affectionStore = useAffectionStore();
+const statsStore = useStatsStore();
 function resetAffection() {
   affectionStore.resetScore();
 }
@@ -25,34 +27,12 @@ const updateMessage = ref("");
 async function checkForUpdates() {
   if (!isTauri) return;
   updateChecking.value = true;
-  updateMessage.value = "正在检查更新...";
-  try {
-    const { check } = await import("@tauri-apps/plugin-updater");
-    const update = await check();
-    if (update) {
-      updateMessage.value = `发现新版本 ${update.version}，正在下载...`;
-      await update.downloadAndInstall();
-      updateMessage.value = "更新已安装，重启应用后生效。";
-    } else {
-      updateMessage.value = "当前已是最新版本。";
-    }
-  } catch (error) {
-    updateMessage.value = `检查更新失败：${formatUpdaterError(error)}`;
-  }
-  updateChecking.value = false;
+  updateMessage.value = "";
+  emit("checkUpdate");
+  window.setTimeout(() => { updateChecking.value = false; }, 800);
 }
 
-function formatUpdaterError(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return "无法连接更新源或更新清单不存在";
-  }
-}
-
-const tab = ref<"llm" | "prompt" | "personalization" | "system" | "about">("llm");
+const tab = ref<"llm" | "prompt" | "personalization" | "stats" | "system" | "about">("llm");
 const provider = ref<LLMProviderName>(settings.value.llm.provider);
 const baseUrl = ref(settings.value.llm.baseUrl);
 const apiKey = ref(settings.value.llm.apiKey);
@@ -102,6 +82,11 @@ onMounted(async () => {
     store.updateSystemPreferences({ autostart: enabled });
   } catch {}
 });
+
+function onRolePresetChange() {
+  store.updateRolePreset(settings.value.rolePreset);
+  systemPrompt.value = settings.value.systemPrompt;
+}
 
 function onProviderChange() {
   const preset = PROVIDER_PRESETS[provider.value];
@@ -235,6 +220,7 @@ function playPreview(type: "water" | "exercise" | "normal") {
       <button :class="{ active: tab === 'llm' }" @click="tab = 'llm'">LLM</button>
       <button :class="{ active: tab === 'prompt' }" @click="tab = 'prompt'">提示词</button>
       <button :class="{ active: tab === 'personalization' }" @click="tab = 'personalization'">个性化</button>
+      <button :class="{ active: tab === 'stats' }" @click="(tab = 'stats'), statsStore.refresh()">统计</button>
       <button :class="{ active: tab === 'system' }" @click="tab = 'system'">系统</button>
       <button :class="{ active: tab === 'about' }" @click="tab = 'about'">关于</button>
     </div>
@@ -262,6 +248,12 @@ function playPreview(type: "water" | "exercise" | "normal") {
       </div>
 
       <div v-show="tab === 'prompt'" class="tab-content">
+        <div class="row">
+          <label>角色</label>
+          <select v-model="settings.rolePreset" @change="onRolePresetChange">
+            <option v-for="(label, key) in ROLE_LABELS" :key="key" :value="key">{{ label }}</option>
+          </select>
+        </div>
         <p class="hint">开场系统提示词，定义 Camo 的人格和行为</p>
         <textarea v-model="systemPrompt" rows="6" class="prompt-area"></textarea>
       </div>
@@ -450,7 +442,43 @@ function playPreview(type: "water" | "exercise" | "normal") {
         </div>
       </div>
 
+      <div v-show="tab === 'stats'" class="tab-content">
+        <div class="settings-group">
+          <h3>今日互动</h3>
+          <div class="stat-row"><span>总互动次数</span><span>{{ statsStore.todayStats.totalEvents }}</span></div>
+          <div class="stat-row"><span>好感变化</span><span :style="{ color: statsStore.todayStats.netDelta >= 0 ? '#22c55e' : '#ef4444' }">{{ statsStore.todayStats.netDelta >= 0 ? '+' : '' }}{{ statsStore.todayStats.netDelta }}</span></div>
+          <div class="stat-row"><span>当前好感度</span><span>{{ statsStore.affectionScore }}</span></div>
+        </div>
+        <div class="settings-group">
+          <h3>类别明细</h3>
+          <div class="stat-row"><span>完成提醒</span><span>{{ statsStore.todayStats.breakdown['reminder_done']?.count ?? 0 }}</span></div>
+          <div class="stat-row"><span>发消息</span><span>{{ statsStore.todayStats.breakdown['user_message']?.count ?? 0 }}</span></div>
+          <div class="stat-row"><span>抚摸</span><span>{{ statsStore.todayStats.breakdown['pet_single_click']?.count ?? 0 }}</span></div>
+          <div class="stat-row"><span>喝水触发</span><span>{{ statsStore.todayStats.breakdown['reminder_triggered_water']?.count ?? 0 }}</span></div>
+          <div class="stat-row"><span>新建提醒</span><span>{{ (statsStore.todayStats.breakdown['reminder_created_water']?.count ?? 0) + (statsStore.todayStats.breakdown['reminder_created_exercise']?.count ?? 0) + (statsStore.todayStats.breakdown['reminder_created_normal']?.count ?? 0) }}</span></div>
+        </div>
+        <div class="settings-group">
+          <h3>已创建提醒</h3>
+          <div class="stat-row"><span>总数</span><span>{{ statsStore.reminderCounts.total }}</span></div>
+          <div class="stat-row"><span>喝水</span><span>{{ statsStore.reminderCounts.water }}</span></div>
+          <div class="stat-row"><span>运动</span><span>{{ statsStore.reminderCounts.exercise }}</span></div>
+          <div class="stat-row"><span>普通</span><span>{{ statsStore.reminderCounts.normal }}</span></div>
+        </div>
+      </div>
+
       <div v-show="tab === 'system'" class="tab-content">
+        <div class="settings-group">
+          <h3>专注模式</h3>
+          <div class="row">
+            <label>专注(分)</label>
+            <input v-model.number="settings.focusDuration" type="number" min="5" max="120" class="num-input" />
+          </div>
+          <div class="row">
+            <label>休息(分)</label>
+            <input v-model.number="settings.breakDuration" type="number" min="1" max="30" class="num-input" />
+          </div>
+        </div>
+
         <div class="settings-group">
           <h3>系统偏好</h3>
           <label class="check-row">
@@ -685,6 +713,17 @@ function playPreview(type: "water" | "exercise" | "normal") {
   white-space: nowrap;
   color: var(--camo-muted);
   font-size: 0.95em;
+}
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 0.9em;
+  color: var(--camo-text);
+}
+.stat-row span:last-child {
+  font-weight: 600;
 }
 .affection-row {
   display: flex;

@@ -12,8 +12,8 @@ import { isTauri } from "./platform";
 import type { LayoutConfig, WindowFrame } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
-export type ToolWindowKind = "chat" | "settings" | "reminders";
-export type AppWindowKind = "pet" | ToolWindowKind | "reminder-alert" | "context-menu";
+export type ToolWindowKind = "chat" | "settings" | "reminders" | "notes";
+export type AppWindowKind = "pet" | ToolWindowKind | "reminder-alert" | "context-menu" | "update-dialog" | "sticky-note";
 type FramedWindowKind = "pet" | ToolWindowKind;
 
 const SAFE_MARGIN = 12;
@@ -22,10 +22,12 @@ const REMINDER_ALERT_SIZE = { width: 300, height: 220 };
 const REMINDER_ALERT_LABELS = ["reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3"] as const;
 type ReminderAlertLabel = typeof REMINDER_ALERT_LABELS[number];
 const REMINDER_ALERT_CASCADE_GAP = 28;
-const CONTEXT_MENU_SIZE = { width: 112, height: 128 };
+const CONTEXT_MENU_SIZE = { width: 80, height: 190 };
+const UPDATE_DIALOG_INITIAL_SIZE = { width: 360, height: 56 };
+const STICKY_NOTE_SIZE = { width: 190, height: 86 };
 const FOLLOW_GAP = 14;
 const MAX_RELATIVE_DISTANCE = 420;
-const ALL_FRAMED_WINDOW_KINDS: FramedWindowKind[] = ["pet", "chat", "settings", "reminders"];
+const ALL_FRAMED_WINDOW_KINDS: FramedWindowKind[] = ["pet", "chat", "settings", "reminders", "notes"];
 
 const TOOL_WINDOW_OPTIONS: Record<ToolWindowKind, {
   title: string;
@@ -37,21 +39,24 @@ const TOOL_WINDOW_OPTIONS: Record<ToolWindowKind, {
   chat: { title: "Camo Chat", width: 380, height: 560, minWidth: 320, minHeight: 360 },
   settings: { title: "Camo Settings", width: 360, height: 420, minWidth: 300, minHeight: 300 },
   reminders: { title: "Camo Reminders", width: 340, height: 460, minWidth: 300, minHeight: 320 },
+  notes: { title: "Camo Notes", width: 340, height: 420, minWidth: 280, minHeight: 260 },
 };
 
 function getWindowKindFromUrl(): AppWindowKind {
   const params = new URLSearchParams(window.location.search);
   const value = params.get("window");
-  if (value === "chat" || value === "settings" || value === "reminders") return value;
+  if (value === "chat" || value === "settings" || value === "reminders" || value === "notes") return value;
   if (value === "reminder-alert") return value;
   if (value === "context-menu") return value;
+  if (value === "update-dialog") return value;
+  if (value === "sticky-note") return value;
   return "pet";
 }
 
 export const currentWindowKind = getWindowKindFromUrl();
 
 function isFramedWindowKind(kind: AppWindowKind): kind is FramedWindowKind {
-  return kind !== "reminder-alert" && kind !== "context-menu";
+  return kind !== "reminder-alert" && kind !== "context-menu" && kind !== "update-dialog" && kind !== "sticky-note";
 }
 
 function frameFor(layout: LayoutConfig, kind: FramedWindowKind): WindowFrame {
@@ -311,6 +316,43 @@ async function defaultContextMenuFrame(clientX: number, clientY: number): Promis
   return clampFrame({ x, y, width, height }, workArea);
 }
 
+export async function openUpdateDialogWindow(data: { status?: string; version?: string; message?: string }) {
+  if (!isTauri) return;
+  try { localStorage.setItem("camo:updateInfo", JSON.stringify(data)); } catch {}
+  const existing = await WebviewWindow.getByLabel("update-dialog").catch(() => null);
+  if (existing) {
+    await existing.show().catch(() => {});
+    await existing.setFocus().catch(() => {});
+    return;
+  }
+  const workArea = await getLogicalWorkArea();
+  const cx = workArea ? workArea.x + (workArea.width - UPDATE_DIALOG_INITIAL_SIZE.width) / 2 : 200;
+  const cy = workArea ? workArea.y + (workArea.height - UPDATE_DIALOG_INITIAL_SIZE.height) / 2 : 200;
+  const child = new WebviewWindow("update-dialog", {
+    url: "/?window=update-dialog",
+    title: "Camo 更新",
+    x: Math.round(cx),
+    y: Math.round(cy),
+    width: UPDATE_DIALOG_INITIAL_SIZE.width,
+    height: UPDATE_DIALOG_INITIAL_SIZE.height,
+    decorations: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    shadow: false,
+    backgroundColor: [0, 0, 0, 0],
+    visible: true,
+  });
+  child.once("tauri://created", () => {
+    child.show().catch(() => {});
+    child.setFocus().catch(() => {});
+  }).catch(() => {});
+  child.once("tauri://error", (event) => {
+    console.error("Failed to create update dialog window", event.payload);
+  }).catch(() => {});
+}
+
 export async function openContextMenuWindow(clientX: number, clientY: number) {
   if (!isTauri) return;
   const existing = await WebviewWindow.getByLabel("context-menu").catch(() => null);
@@ -396,6 +438,65 @@ export async function openReminderAlertWindow(reminderId: string) {
   child.once("tauri://created", () => {
     child.setFocus().catch(() => {});
   }).catch(() => {});
+}
+
+export async function openStickyNoteWindow(noteId: string, index = 0) {
+  if (!isTauri) return;
+  const label = `sticky-note-${noteId}`;
+  const existing = await WebviewWindow.getByLabel(label).catch(() => null);
+  if (existing) {
+    const nextFrame = await defaultStickyNoteFrame(index);
+    await existing.setSize(new LogicalSize(nextFrame.width, nextFrame.height)).catch(() => {});
+    await existing.setPosition(new LogicalPosition(nextFrame.x, nextFrame.y)).catch(() => {});
+    await existing.show().catch(() => {});
+    await existing.setFocus().catch(() => {});
+    return;
+  }
+  const frame = await defaultStickyNoteFrame(index);
+
+  const behavior = useSettingsStore().settings.windowPreferences.tools;
+  const child = new WebviewWindow(label, {
+    url: `/?window=sticky-note&noteId=${encodeURIComponent(noteId)}`,
+    title: "Camo Note",
+    x: frame.x,
+    y: frame.y,
+    width: frame.width,
+    height: frame.height,
+    minWidth: 150,
+    minHeight: 64,
+    decorations: false,
+    transparent: true,
+    resizable: true,
+    alwaysOnTop: behavior.alwaysOnTop,
+    visibleOnAllWorkspaces: behavior.alwaysOnTop,
+    skipTaskbar: true,
+    shadow: false,
+    backgroundColor: [0, 0, 0, 0],
+    preventOverflow: { width: SAFE_MARGIN, height: SAFE_MARGIN },
+  });
+
+  child.once("tauri://created", () => {
+    child.setFocus().catch(() => {});
+  }).catch(() => {});
+}
+
+async function defaultStickyNoteFrame(index = 0): Promise<Required<WindowFrame>> {
+  const workArea = await getLogicalWorkArea();
+  const petFrame = await readCurrentLogicalFrame();
+  const width = STICKY_NOTE_SIZE.width;
+  const height = STICKY_NOTE_SIZE.height;
+  const anchorX = petFrame?.x ?? (workArea ? workArea.x + workArea.width - PET_BASE_SIZE.width - SAFE_MARGIN : 80);
+  const anchorY = petFrame?.y ?? (workArea ? workArea.y + workArea.height - PET_BASE_SIZE.height - SAFE_MARGIN : 80);
+  const anchorWidth = petFrame?.width ?? PET_BASE_SIZE.width;
+  const gap = 12;
+  const row = Math.floor(index / 2);
+  const side = index % 2 === 0 ? -1 : 1;
+  const x = side < 0
+    ? anchorX - width - gap - row * 10
+    : anchorX + anchorWidth + gap + row * 10;
+  const y = anchorY + row * (height + gap);
+  const frame = { x, y, width, height };
+  return workArea ? clampFrame(frame, workArea) : frame;
 }
 
 export async function toggleToolWindow(kind: ToolWindowKind) {

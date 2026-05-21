@@ -4,6 +4,7 @@ import {
   getState,
   saveState,
   adjust as adjustService,
+  logEvent as logEventService,
   reset as resetService,
   buildAffectionContext,
   stageLabel,
@@ -37,6 +38,10 @@ export const useAffectionStore = defineStore("affection", () => {
     saveState(state.value);
   }
 
+  function logEvent(reason: string, delta = 0) {
+    logEventService(reason, delta, state.value.score);
+  }
+
   function markClose() {
     state.value = { ...state.value, lastClose: nowISO() };
     saveState(state.value);
@@ -52,5 +57,5 @@ export const useAffectionStore = defineStore("affection", () => {
     sync();
   }
 
-  return { state, score, stage, context, adjust, markInteraction, markClose, resetScore, refresh };
+  return { state, score, stage, context, adjust, logEvent, markInteraction, markClose, resetScore, refresh };
 });

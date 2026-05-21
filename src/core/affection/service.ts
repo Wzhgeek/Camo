@@ -16,6 +16,16 @@ function todayDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function logEvent(reason: string, delta = 0, scoreAfter?: number): void {
+  const score = scoreAfter ?? getState().score;
+  try {
+    dbRun(
+      `INSERT INTO affection_log (reason, delta, score_after, date, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [reason, delta, score, todayDate(), nowISO()],
+    );
+  } catch { /* log not available */ }
+}
+
 export function getState(): AffectionState {
   try {
     const row = dbGet<{ value: string }>("SELECT value FROM settings WHERE key = ?", [STORAGE_KEY]);
@@ -71,12 +81,7 @@ export function adjust(
   state.score = newScore;
   state.lastInteraction = nowISO();
 
-  try {
-    dbRun(
-      `INSERT INTO affection_log (reason, delta, score_after, date, created_at) VALUES (?, ?, ?, ?, ?)`,
-      [reason, delta, newScore, todayDate(), nowISO()],
-    );
-  } catch { /* log not available */ }
+  logEvent(reason, delta, newScore);
 
   saveState(state);
   return { ...state };

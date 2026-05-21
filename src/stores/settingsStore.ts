@@ -18,6 +18,7 @@ export interface LayoutConfig {
   chat: WindowFrame;
   settings: WindowFrame;
   reminders: WindowFrame;
+  notes: WindowFrame;
 }
 
 export interface WindowFrame {
@@ -71,15 +72,45 @@ export interface SystemPreferencesConfig {
   autostart: boolean;
 }
 
+export const ROLE_PRESETS: Record<string, string> = {
+  friendly: "你是 Camo，一个简洁、温和的桌面个人助手。回答简短清楚，默认中文。",
+  lively: "你是 Camo，一个活泼开朗的桌面小伙伴！说话带劲，喜欢开玩笑，偶尔用点 emoji 让气氛活跃起来。",
+  gentle: "你是 Camo，一个温柔体贴的陪伴助手。说话轻声细语，多关心用户的感受，像朋友一样温暖。",
+  cool: "你是 Camo，一个冷静高效的助手。回答简洁精准，不啰嗦，不闲聊，只干正事。",
+  cute: "你是 Camo，一个可爱的桌宠妹妹~ 说话软萌，喜欢用颜文字和 emoji，爱撒娇，超粘人！",
+};
+
+export const ROLE_LABELS: Record<string, string> = {
+  friendly: "亲切（默认）",
+  lively: "活泼",
+  gentle: "温柔",
+  cool: "高冷",
+  cute: "可爱",
+};
+
 export interface CamoSettings {
   llm: LLMConfig;
   waterReminder: WaterReminderConfig;
+  rolePreset: string;
   systemPrompt: string;
   theme: CamoTheme;
   layout: LayoutConfig;
+  stickyNote: string;
+  stickyNoteEnabled: boolean;
+  stickyNotes: StickyNoteConfig[];
+  focusDuration: number;
+  breakDuration: number;
   appearance: AppearanceConfig;
   windowPreferences: WindowPreferencesConfig;
   systemPreferences: SystemPreferencesConfig;
+}
+
+export interface StickyNoteConfig {
+  id: string;
+  text: string;
+  enabled: boolean;
+  x?: number;
+  y?: number;
 }
 
 const defaultSettings: CamoSettings = {
@@ -90,7 +121,13 @@ const defaultSettings: CamoSettings = {
     startTime: "09:00",
     endTime: "22:00",
   },
-  systemPrompt: "你是 Camo，一个简洁、温和的桌面个人助手。回答简短清楚，默认中文。",
+  rolePreset: "friendly",
+  systemPrompt: ROLE_PRESETS.friendly,
+  stickyNote: "",
+  stickyNoteEnabled: false,
+  stickyNotes: [],
+  focusDuration: 25,
+  breakDuration: 5,
   theme: "grey",
   layout: {
     scale: 1,
@@ -98,6 +135,7 @@ const defaultSettings: CamoSettings = {
     chat: { width: 380, height: 560 },
     settings: { width: 360, height: 420 },
     reminders: { width: 340, height: 460 },
+    notes: { width: 340, height: 420 },
   },
   appearance: {
     fontFamily: "system",
@@ -156,6 +194,7 @@ function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
     chat: { ...defaultSettings.layout.chat, ...(incomingLayout.chat ?? {}) },
     settings: { ...defaultSettings.layout.settings, ...(incomingLayout.settings ?? {}) },
     reminders: { ...defaultSettings.layout.reminders, ...(incomingLayout.reminders ?? {}) },
+    notes: { ...defaultSettings.layout.notes, ...(incomingLayout.notes ?? {}) },
   };
   const normalizedAppearance: AppearanceConfig = {
     ...defaultSettings.appearance,
@@ -181,12 +220,32 @@ function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
     ...settings,
     llm: { ...defaultLLMConfig, ...(settings.llm ?? {}) },
     waterReminder: { ...defaultSettings.waterReminder, ...(settings.waterReminder ?? {}) },
+    stickyNotes: normalizeStickyNotes(settings),
     layout: normalizedLayout,
     appearance: normalizedAppearance,
     windowPreferences: normalizedWindowPreferences,
     systemPreferences: normalizedSystemPreferences,
     theme: isCamoTheme(settings.theme) ? settings.theme : "grey",
   };
+}
+
+function normalizeStickyNotes(settings: Partial<CamoSettings>): StickyNoteConfig[] {
+  const notes = Array.isArray(settings.stickyNotes) ? settings.stickyNotes : [];
+  if (notes.length > 0) {
+    return notes
+      .filter((note) => typeof note?.text === "string")
+      .map((note) => ({
+        id: note.id || crypto.randomUUID(),
+        text: note.text,
+        enabled: note.enabled ?? true,
+        x: typeof note.x === "number" ? note.x : undefined,
+        y: typeof note.y === "number" ? note.y : undefined,
+      }));
+  }
+  if (settings.stickyNote && settings.stickyNoteEnabled) {
+    return [{ id: crypto.randomUUID(), text: settings.stickyNote, enabled: true }];
+  }
+  return [];
 }
 
 function loadSettings(): CamoSettings {
@@ -198,7 +257,13 @@ function loadSettings(): CamoSettings {
       return normalizeSettings({
         llm: map.llm ? JSON.parse(map.llm) : { ...defaultLLMConfig },
         waterReminder: map.waterReminder ? JSON.parse(map.waterReminder) : defaultSettings.waterReminder,
+        rolePreset: map.rolePreset ?? "friendly",
         systemPrompt: map.systemPrompt ?? defaultSettings.systemPrompt,
+        stickyNote: map.stickyNote ?? "",
+        stickyNoteEnabled: map.stickyNoteEnabled === "true",
+        stickyNotes: map.stickyNotes ? JSON.parse(map.stickyNotes) : [],
+        focusDuration: Number(map.focusDuration) || 25,
+        breakDuration: Number(map.breakDuration) || 5,
         theme: (map.theme as CamoTheme) ?? "grey",
         layout: map.layout ? JSON.parse(map.layout) : defaultSettings.layout,
         appearance: map.appearance ? JSON.parse(map.appearance) : defaultSettings.appearance,
@@ -218,7 +283,13 @@ function saveSettings(val: CamoSettings) {
   try {
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["llm", JSON.stringify(val.llm)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["waterReminder", JSON.stringify(val.waterReminder)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["rolePreset", val.rolePreset]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["systemPrompt", val.systemPrompt]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["stickyNote", val.stickyNote]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["stickyNoteEnabled", String(val.stickyNoteEnabled)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["stickyNotes", JSON.stringify(val.stickyNotes)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["focusDuration", String(val.focusDuration)]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["breakDuration", String(val.breakDuration)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["theme", val.theme]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["layout", JSON.stringify(val.layout)]);
     dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["appearance", JSON.stringify(val.appearance)]);
@@ -265,6 +336,12 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value.waterReminder = { ...settings.value.waterReminder, ...config };
   }
 
+  function updateRolePreset(preset: string) {
+    settings.value.rolePreset = preset;
+    const prompt = ROLE_PRESETS[preset];
+    if (prompt) settings.value.systemPrompt = prompt;
+  }
+
   function updateSystemPrompt(prompt: string) {
     settings.value.systemPrompt = prompt;
   }
@@ -292,15 +369,21 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value.systemPreferences = { ...settings.value.systemPreferences, ...preferences };
   }
 
+  function updateStickyNotes(notes: StickyNoteConfig[]) {
+    settings.value.stickyNotes = notes;
+  }
+
   return {
     settings,
     updateLLM,
     updateWaterReminder,
     updateSystemPrompt,
+    updateRolePreset,
     updateTheme,
     updateLayout,
     updateAppearance,
     updateWindowPreferences,
     updateSystemPreferences,
+    updateStickyNotes,
   };
 });

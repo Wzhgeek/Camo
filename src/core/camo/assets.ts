@@ -16,6 +16,7 @@ const stateToFile: Record<CamoState, string> = {
   exercise: "camo_exercise.png",
   sleepy: "camo_sleepy.png",
   done: "camo_done.png",
+  focus: "camo_thinking.png",
 };
 
 // frame 0 = camo_idle.png, 1-5 = camo_idle1.png ~ camo_idle5.png

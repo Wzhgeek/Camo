@@ -7,7 +7,8 @@ export type CamoState =
   | "water"
   | "exercise"
   | "sleepy"
-  | "done";
+  | "done"
+  | "focus";
 
 export type CamoEvent =
   | { type: "APP_READY" }
@@ -17,7 +18,8 @@ export type CamoEvent =
   | { type: "LLM_STREAM_END" }
   | { type: "REMINDER_TRIGGERED"; reminderType: "normal" | "water" | "exercise" }
   | { type: "TASK_DONE" }
-  | { type: "IDLE_TIMEOUT" };
+  | { type: "IDLE_TIMEOUT" }
+  | { type: "FOCUS_START" };
 
 export function reduceCamoState(event: CamoEvent): CamoState {
   switch (event.type) {
@@ -39,5 +41,7 @@ export function reduceCamoState(event: CamoEvent): CamoState {
       return "done";
     case "IDLE_TIMEOUT":
       return "sleepy";
+    case "FOCUS_START":
+      return "focus";
   }
 }

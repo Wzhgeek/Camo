@@ -5,7 +5,7 @@
     "windows",
     "linux"
   ],
-  "windows": ["main", "chat", "settings", "reminders", "reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3", "context-menu"],
+  "windows": ["main", "chat", "settings", "reminders", "notes", "reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3", "context-menu", "update-dialog", "sticky-note-*"],
   "permissions": [
     "autostart:default"
   ]
