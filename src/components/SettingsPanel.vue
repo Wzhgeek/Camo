@@ -302,6 +302,14 @@ function onDragEnd() { dragging.value = false; }
             <span class="value">{{ settings.appearance.bubbleRadius }}px</span>
           </div>
         </div>
+
+        <div class="settings-group">
+          <h3>音效</h3>
+          <label class="check-row">
+            <input v-model="settings.appearance.reminderSound" type="checkbox" />
+            <span>提醒音效</span>
+          </label>
+        </div>
       </div>
 
       <div v-show="tab === 'system'" class="tab-content">

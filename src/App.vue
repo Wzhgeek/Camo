@@ -23,6 +23,7 @@ import {
   toggleToolWindow,
 } from "./core/windowManager";
 import { applyAppearance, darkModeLabel, nextDarkModePreference } from "./core/appearance";
+import { playReminderSound } from "./core/audio";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const camo = useCamoStore();
@@ -48,7 +49,9 @@ const petSide = computed<"left" | "right">(() => {
 const scheduler = new ReminderScheduler(
   (reminder) => {
     const typeMap = { water: "water", exercise: "exercise", normal: "normal" } as const;
-    camo.transition({ type: "REMINDER_TRIGGERED", reminderType: typeMap[reminder.type] });
+    const t = typeMap[reminder.type];
+    if (settingsStore.settings.appearance.reminderSound) playReminderSound(t);
+    camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
     reminderStore.trigger(reminder);
   },
   () => settingsStore.settings.waterReminder,
@@ -181,6 +184,12 @@ function closeContextMenu() {
   contextMenu.value.show = false;
 }
 
+function toggleLock() {
+  contextMenu.value.show = false;
+  const current = settingsStore.settings.windowPreferences.pet.locked;
+  settingsStore.updateWindowPreferences({ pet: { ...settingsStore.settings.windowPreferences.pet, locked: !current } });
+}
+
 function openSettings() {
   contextMenu.value.show = false;
   openToolWindow("settings");
@@ -249,6 +258,7 @@ function handleWheel(e: WheelEvent) {
     >
       <button class="context-item" @click="openSettings">设置</button>
       <button class="context-item" @click="openReminders">提醒</button>
+      <button class="context-item" @click="toggleLock">{{ settingsStore.settings.windowPreferences.pet.locked ? '✓ 已锁定' : '锁定位置' }}</button>
       <button class="context-item" @click="toggleDarkMode">{{ darkModeLabel(settingsStore.settings.appearance.darkMode) }}</button>
       <button class="context-item danger" @click="exitApp">退出 Camo</button>
     </div>

@@ -44,9 +44,8 @@ function onPointerMove(e: PointerEvent) {
   if (props.locked) return;
   const dx = e.clientX - pointerDownPos.value.x;
   const dy = e.clientY - pointerDownPos.value.y;
-  if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-    hasDragged.value = true;
-  }
+  if (Math.abs(dx) <= DRAG_THRESHOLD && Math.abs(dy) <= DRAG_THRESHOLD) return;
+  hasDragged.value = true;
   if (!dragging.value) return;
   if (isTauri) {
     dragging.value = false;
@@ -83,6 +82,7 @@ function onPetClick() {
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
     @click="onPetClick"
     @wheel.prevent="emit('wheel', $event)"
   >

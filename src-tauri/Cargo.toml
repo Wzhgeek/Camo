@@ -1,6 +1,6 @@
 [package]
 name = "camo"
-version = "0.2.5"
+version = "0.2.6"
 description = "Camo desktop pet assistant"
 authors = ["you"]
 edition = "2021"
