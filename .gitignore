@@ -23,7 +23,6 @@ specs/
 *.njsproj
 *.sln
 *.sw?
-ces.htmlCamo_asset/
 plan/
 ces.html
 Camo_asset/
