@@ -39,7 +39,7 @@
       "endpoints": [
         "https://github.com/Wzhgeek/Camo/releases/latest/download/updater.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEwQTk4MkY3MDZDMjgxQzQKUldURWdjSUc5NEtwRU93dVp6eThwclVFV2F4emZod2c1aVFTYk56ZTY5QnF3Q3lRVFN3NVdPMVUK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5QkQ1N0FDMzg2ODRDMjUKUldRbFRHZzRyRmU5cWRZVTJQQjE1ei9QbHhPWldOT3c4WFJXSER3R2FPN0w2RzNzVE5SQUUyVFMK"
     }
   },
   "bundle": {
