@@ -1,7 +1,7 @@
 {
   "name": "camo",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "A lightweight Tauri desktop pet assistant.",
   "type": "module",
   "scripts": {
