@@ -50,7 +50,7 @@ const scheduler = new ReminderScheduler(
   (reminder) => {
     const typeMap = { water: "water", exercise: "exercise", normal: "normal" } as const;
     const t = typeMap[reminder.type];
-    if (settingsStore.settings.appearance.reminderSound !== "off") playReminderSound(t);
+    if (settingsStore.settings.appearance.reminderSound !== "off") playReminderSound(t, settingsStore.settings.appearance.soundVolume);
     camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
     reminderStore.trigger(reminder);
   },
@@ -180,8 +180,30 @@ function handleContextMenu(e: MouseEvent) {
   contextMenu.value = { show: true, x, y };
 }
 
+let menuClickHandler: ((ev: MouseEvent) => void) | null = null;
+
 function closeContextMenu() {
   contextMenu.value.show = false;
+  if (menuClickHandler) {
+    window.removeEventListener('click', menuClickHandler, true);
+    menuClickHandler = null;
+  }
+}
+
+function handleContextMenu(e: MouseEvent) {
+  if (!isPetWindow.value) return;
+  e.preventDefault();
+  const menuW = 100;
+  const menuH = 124;
+  const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
+  const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
+  contextMenu.value = { show: true, x, y };
+  closeContextMenu();
+  menuClickHandler = (ev: MouseEvent) => {
+    const target = ev.target as HTMLElement;
+    if (!target.closest('.context-menu')) closeContextMenu();
+  };
+  setTimeout(() => window.addEventListener('click', menuClickHandler, true), 0);
 }
 
 function toggleLock() {

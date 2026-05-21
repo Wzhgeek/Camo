@@ -124,7 +124,7 @@ function onDragMove(e: PointerEvent) {
   pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
 }
 function onDragEnd() { dragging.value = false; }
-function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(type); }
+function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(type, settings.value.appearance.soundVolume); }
 </script>
 
 <template>
@@ -318,6 +318,11 @@ function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(
             <button class="preview-btn" @click="playPreview('water')">💧 试听</button>
             <button class="preview-btn" @click="playPreview('exercise')">💪 试听</button>
             <button class="preview-btn" @click="playPreview('normal')">🔔 试听</button>
+          </div>
+          <div v-if="settings.appearance.reminderSound !== 'off'" class="row">
+            <label>音量</label>
+            <input v-model.number="settings.appearance.soundVolume" type="range" min="0" max="1" step="0.05" />
+            <span class="value">{{ Math.round(settings.appearance.soundVolume * 100) }}%</span>
           </div>
         </div>
       </div>

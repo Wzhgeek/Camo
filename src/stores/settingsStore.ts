@@ -49,6 +49,7 @@ export interface AppearanceConfig {
   bubbleOpacity: number;
   bubbleRadius: number;
   reminderSound: "off" | "simple";
+  soundVolume: number;
 }
 
 export interface WindowBehaviorConfig {
@@ -111,6 +112,7 @@ const defaultSettings: CamoSettings = {
     bubbleOpacity: 0.96,
     bubbleRadius: 16,
     reminderSound: "simple",
+    soundVolume: 0.5,
   },
   windowPreferences: {
     pet: {
