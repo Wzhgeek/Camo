@@ -10,6 +10,7 @@ import { useCamoStore } from "./stores/camoStore";
 import { useChatStore } from "./stores/chatStore";
 import { useReminderStore } from "./stores/reminderStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useAffectionStore } from "./stores/affectionStore";
 import { ReminderScheduler } from "./core/reminder/scheduler";
 import { isTauri } from "./core/platform";
 import {
@@ -32,6 +33,7 @@ const camo = useCamoStore();
 const chatStore = useChatStore();
 const reminderStore = useReminderStore();
 const settingsStore = useSettingsStore();
+const affectionStore = useAffectionStore();
 const { state, asset } = storeToRefs(camo);
 const { llmPhase } = storeToRefs(chatStore);
 const scale = ref(settingsStore.settings.layout.scale);
@@ -94,6 +96,8 @@ watch(() => reminderStore.activeReminder, (val) => {
 });
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const skipCounts: Record<string, number> = {};
+const showToast = ref(false);
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
 let frameUnlisteners: UnlistenFn[] = [];
 let focusUnlisten: UnlistenFn | undefined;
@@ -134,9 +138,22 @@ function handleReminderAction(payload: { action?: string; reminderId?: string; r
   if (action === "done") {
     camo.transition({ type: "TASK_DONE" });
     camo.returnToIdle(2500);
-  } else {
-    camo.returnToIdle(700);
+    skipCounts[payload.reminderType ?? ""] = 0;
+    affectionStore.adjust("reminder_done", 3);
+  } else if (action === "skip") {
+    const t = payload.reminderType ?? "normal";
+    skipCounts[t] = (skipCounts[t] ?? 0) + 1;
+    if (skipCounts[t] >= 3) {
+      skipCounts[t] = 0;
+      affectionStore.adjust("reminder_skipped_x3", -2);
+    }
   }
+}
+
+function handleBeforeUnload() {
+  const st = affectionStore.state;
+  if (st.lastInteraction) affectionStore.adjust("app_close", -1);
+  affectionStore.markClose();
 }
 
 function handleReminderActionStorage(e: StorageEvent) {
@@ -174,7 +191,19 @@ onMounted(() => {
     window.addEventListener("keydown", resetInactivityTimer, { passive: true });
     window.addEventListener("click", resetInactivityTimer, { passive: true });
     window.addEventListener("storage", handleReminderActionStorage);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     resetInactivityTimer();
+    const _st = affectionStore.state;
+    const hrs = _st.lastClose ? (Date.now() - new Date(_st.lastClose).getTime()) / 3600000 : -1;
+    if (hrs > 24) {
+      affectionStore.adjust("idle_24h", -3);
+    } else if (hrs > 1) {
+      affectionStore.adjust("online_hour", Math.min(Math.floor(hrs), 5));
+    }
+    if (hrs > 0.5 && _st.score > 70) {
+      setTimeout(() => showToast.value = true, 1500);
+      setTimeout(() => showToast.value = false, 4500);
+    }
   }
 });
 
@@ -190,6 +219,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", resetInactivityTimer);
   window.removeEventListener("click", resetInactivityTimer);
   window.removeEventListener("storage", handleReminderActionStorage);
+  window.removeEventListener("beforeunload", handleBeforeUnload);
 });
 
 watch(llmPhase, (phase) => {
@@ -217,7 +247,13 @@ watch(() => settingsStore.settings.windowPreferences, () => {
   resetCurrentWindowPosition(currentWindowKind);
 }, { deep: true });
 
-function handlePetClick() {
+function handlePetAffection() {
+  camo.transition({ type: "PET_CLICKED" });
+  camo.returnToIdle(500);
+  affectionStore.adjust("pet_single_click", 1, { dailyLimit: 5 });
+}
+
+function handlePetOpenChat() {
   toggleToolWindow("chat");
   camo.transition({ type: "PET_CLICKED" });
   camo.returnToIdle(400);
@@ -324,10 +360,15 @@ function handleWheel(e: WheelEvent) {
       :offset="petOffset"
       :locked="currentBehavior.locked"
       :status-style="statusStyle"
-      @click="handlePetClick"
+      @single-click="handlePetAffection"
+      @double-click="handlePetOpenChat"
       @wheel="handleWheel"
       @drag="handlePetDrag"
     />
+
+    <div v-if="showToast" class="startup-toast">
+      你回来啦！❤️
+    </div>
 
     <div
       v-if="contextMenu.show || isContextMenuWindow"
@@ -847,4 +888,27 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
 .context-item:hover { background: rgba(127,90,240,0.1); color: var(--camo-menu-text); }
 .context-item.danger { color: #d92d20; }
 .context-item.danger:hover { background: rgba(217,45,32,0.08); color: #b42318; }
+.startup-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--camo-surface-strong) 96%, transparent);
+  border: 1px solid var(--camo-border);
+  color: var(--camo-bubble-text);
+  font-size: 15px;
+  font-weight: 600;
+  z-index: 9999;
+  pointer-events: none;
+  animation: toast-fade 3s ease-out forwards;
+  animation-delay: 0s;
+}
+@keyframes toast-fade {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -55%) scale(0.95); }
+}
 </style>

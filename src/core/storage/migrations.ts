@@ -27,4 +27,12 @@ export const MIGRATIONS = [
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS affection_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reason TEXT NOT NULL,
+    delta INTEGER NOT NULL,
+    score_after INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
 ];

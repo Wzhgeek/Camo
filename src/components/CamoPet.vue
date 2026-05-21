@@ -16,7 +16,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  click: [];
+  singleClick: [];
+  doubleClick: [];
   wheel: [e: WheelEvent];
   drag: [pos: { x: number; y: number }];
 }>();
@@ -30,6 +31,8 @@ const DRAG_THRESHOLD = 5;
 let clickCount = 0;
 let clickTimer: ReturnType<typeof setTimeout> | undefined;
 const DBLCLICK_DELAY = 300;
+
+const heartKey = ref(0);
 
 function onPointerDown(e: PointerEvent) {
   if (props.locked) return;
@@ -65,10 +68,18 @@ function onPetClick() {
   if (clickCount === 2) {
     clearTimeout(clickTimer);
     clickCount = 0;
-    emit("click");
+    emit("doubleClick");
   } else {
-    clickTimer = setTimeout(() => { clickCount = 0; }, DBLCLICK_DELAY);
+    clickTimer = setTimeout(() => {
+      clickCount = 0;
+      showHeart();
+      emit("singleClick");
+    }, DBLCLICK_DELAY);
   }
+}
+
+function showHeart() {
+  heartKey.value++;
 }
 </script>
 
@@ -95,5 +106,22 @@ function onPetClick() {
         :data-state="state"
       />
     </button>
+    <span v-for="i in heartKey" :key="i" class="float-heart">❤️</span>
   </section>
 </template>
+
+<style scoped>
+.float-heart {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  pointer-events: none;
+  animation: heart-float 1.5s ease-out forwards;
+}
+@keyframes heart-float {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+  100% { transform: translate(-50%, -90px) scale(1.4); opacity: 0; }
+}
+</style>

@@ -8,6 +8,7 @@ import { parseReminderFromText } from "../core/reminder/parser";
 import { reminderService } from "../core/reminder/reminderService";
 import type { ReminderInput, ReminderType, ScheduleKind } from "../core/reminder/types";
 import { useReminderStore } from "./reminderStore";
+import { useAffectionStore } from "./affectionStore";
 
 export type ChatRole = "user" | "assistant";
 export type LLMPhase = "idle" | "thinking" | "answering" | "done";
@@ -184,8 +185,9 @@ export const useChatStore = defineStore("chat", () => {
 
     try {
       const settingsStore = useSettingsStore();
+      const affectionStore = useAffectionStore();
       const nowStr = new Date().toLocaleString("zh-CN");
-      const systemPrompt = `${settingsStore.settings.systemPrompt}
+      const systemPrompt = `${affectionStore.context}\n\n${settingsStore.settings.systemPrompt}
 
 当前时间：${nowStr}
 
@@ -281,6 +283,7 @@ type 可选：normal / water / exercise`;
       messages.value[idx].isThinking = false;
       saveMessages(activeSessionId.value, messages.value);
       updateSessionTitle(trimmed);
+      affectionStore.adjust("user_message", 1);
     } catch (err: any) {
       if (err.name === "AbortError") {
         const idx = messages.value.length - 1;

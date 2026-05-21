@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useReminderStore } from "../stores/reminderStore";
 import { useCamoStore } from "../stores/camoStore";
+import { useAffectionStore } from "../stores/affectionStore";
 import { reminderService } from "../core/reminder/reminderService";
 import type { Reminder } from "../core/reminder/types";
 import { closeCurrentWindow, currentWindowKind } from "../core/windowManager";
 import { Droplets, Dumbbell, Bell } from "lucide-vue-next";
 
+const HIGH_AFFECTION_TITLES: Record<string, string> = {
+  water: "宝，渴了不？来一口！",
+  exercise: "屁股麻了吧，起来扭扭~",
+  normal: "别忘了哦，我记得的！",
+};
+
 const reminder = useReminderStore();
 const camo = useCamoStore();
+const affection = useAffectionStore();
 const { activeReminder } = storeToRefs(reminder);
 const routeReminderId = new URLSearchParams(window.location.search).get("reminderId");
 const isAlertWindow = currentWindowKind === "reminder-alert";
+
+const displayTitle = computed(() => {
+  const r = activeReminder.value;
+  if (!r) return "";
+  if (affection.score <= 70) return r.title;
+  return HIGH_AFFECTION_TITLES[r.type] ?? r.title;
+});
 
 onMounted(() => {
   if (!routeReminderId || activeReminder.value) return;
@@ -109,7 +124,7 @@ function skip() {
       <Dumbbell v-else-if="activeReminder.type === 'exercise'" :size="28" color="#22c55e" />
       <Bell v-else :size="28" color="#7c3aed" />
     </div>
-    <p class="bubble-title">{{ activeReminder.title }}</p>
+    <p class="bubble-title">{{ displayTitle }}</p>
     <div class="bubble-actions">
       <button class="bubble-btn primary" @click="done">完成</button>
       <button class="bubble-btn" @click="later">稍后</button>

@@ -8,12 +8,17 @@ import { isTauri } from "../core/platform";
 import { getAutostartEnabled, setAutostartEnabled } from "../core/autostart";
 import { version } from "../../package.json";
 import { playReminderSound, playSoundFile } from "../core/audio";
+import { useAffectionStore } from "../stores/affectionStore";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 const store = useSettingsStore();
 const { settings } = storeToRefs(store);
+const affectionStore = useAffectionStore();
+function resetAffection() {
+  affectionStore.resetScore();
+}
 
 const tab = ref<"llm" | "prompt" | "personalization" | "system" | "about">("llm");
 const provider = ref<LLMProviderName>(settings.value.llm.provider);
@@ -399,6 +404,18 @@ function playPreview(type: "water" | "exercise" | "normal") {
             <input ref="fileInputRef" type="file" accept="audio/mpeg" style="display:none" @change="onFileSelected" />
           </div>
         </div>
+
+        <div class="settings-group">
+          <h3>好感度</h3>
+          <div class="affection-row">
+            <div class="affection-bar-bg">
+              <div class="affection-bar-fill" :style="{ width: affectionStore.score + '%' }"></div>
+            </div>
+            <span class="affection-value">{{ affectionStore.score }}</span>
+            <span class="affection-stage">{{ affectionStore.stage }}</span>
+          </div>
+          <button class="small-btn" @click="resetAffection" style="margin-top:4px">重置好感度</button>
+        </div>
       </div>
 
       <div v-show="tab === 'system'" class="tab-content">
@@ -632,6 +649,36 @@ function playPreview(type: "water" | "exercise" | "normal") {
   white-space: nowrap;
   color: var(--camo-muted);
   font-size: 0.95em;
+}
+.affection-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.affection-bar-bg {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--camo-border);
+  overflow: hidden;
+}
+.affection-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e, #7c3aed);
+  transition: width 0.3s ease;
+}
+.affection-value {
+  font-size: 1em;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: right;
+  color: var(--camo-text);
+}
+.affection-stage {
+  font-size: 0.9em;
+  color: var(--camo-muted);
+  min-width: 32px;
 }
 .small-btn {
   padding: 2px 8px;
