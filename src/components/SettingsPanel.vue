@@ -6,6 +6,7 @@ import { PROVIDER_PRESETS } from "../core/llm/types";
 import type { LLMProviderName } from "../core/llm/types";
 import { isTauri } from "../core/platform";
 import { getAutostartEnabled, setAutostartEnabled } from "../core/autostart";
+import { version } from "../../package.json";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
@@ -338,7 +339,7 @@ function onDragEnd() { dragging.value = false; }
         <p>Tauri 2 + Vue 3 + TypeScript</p>
         <p>开发者：<b>wangzihan</b></p>
         <p>GitHub：<a href="https://github.com/wzhgeek/camo" target="_blank">wzhgeek/camo</a></p>
-        <p style="opacity:0.6;font-size:10px;margin-top:6px">v0.2.2</p>
+        <p style="opacity:0.6;font-size:10px;margin-top:6px">v{{ version }}</p>
       </div>
     </div>
 
