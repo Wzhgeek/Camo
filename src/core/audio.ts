@@ -61,3 +61,17 @@ export function playReminderSound(type: "water" | "exercise" | "normal", volume 
   else if (type === "exercise") exerciseSounds(volume);
   else normalSounds(volume);
 }
+
+export function playSoundFile(dataUrl: string, volume = 0.5): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const audio = new Audio(dataUrl);
+      audio.volume = Math.max(0, Math.min(1, volume));
+      audio.onended = () => resolve();
+      audio.onerror = () => reject(new Error("Audio playback failed"));
+      audio.play().catch(reject);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}

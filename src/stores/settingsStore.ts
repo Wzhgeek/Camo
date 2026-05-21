@@ -48,8 +48,10 @@ export interface AppearanceConfig {
   bubbleStyle: BubbleStylePreset;
   bubbleOpacity: number;
   bubbleRadius: number;
-  reminderSound: "off" | "simple";
+  reminderSound: "off" | "simple" | "custom";
   soundVolume: number;
+  customSoundPaths: { water: string; exercise: string; normal: string };
+  customSoundNames: { water: string; exercise: string; normal: string };
 }
 
 export interface WindowBehaviorConfig {
@@ -113,6 +115,8 @@ const defaultSettings: CamoSettings = {
     bubbleRadius: 16,
     reminderSound: "simple",
     soundVolume: 0.5,
+    customSoundPaths: { water: "", exercise: "", normal: "" },
+    customSoundNames: { water: "", exercise: "", normal: "" },
   },
   windowPreferences: {
     pet: {

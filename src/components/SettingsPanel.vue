@@ -7,7 +7,7 @@ import type { LLMProviderName } from "../core/llm/types";
 import { isTauri } from "../core/platform";
 import { getAutostartEnabled, setAutostartEnabled } from "../core/autostart";
 import { version } from "../../package.json";
-import { playReminderSound } from "../core/audio";
+import { playReminderSound, playSoundFile } from "../core/audio";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
@@ -124,7 +124,56 @@ function onDragMove(e: PointerEvent) {
   pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
 }
 function onDragEnd() { dragging.value = false; }
-function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(type, settings.value.appearance.soundVolume); }
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const pendingSoundType = ref<"water" | "exercise" | "normal" | null>(null);
+
+function fileName(type: "water" | "exercise" | "normal"): string {
+  return settings.value.appearance.customSoundNames[type] || "";
+}
+
+function selectSound(type: "water" | "exercise" | "normal") {
+  pendingSoundType.value = type;
+  fileInputRef.value?.click();
+}
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const type = pendingSoundType.value;
+  if (!file || !type) return;
+  if (file.size > 500 * 1024) {
+    alert("请选择小于 500KB 的 mp3 文件");
+    input.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result as string;
+    store.updateAppearance({
+      customSoundPaths: { ...settings.value.appearance.customSoundPaths, [type]: dataUrl },
+      customSoundNames: { ...settings.value.appearance.customSoundNames, [type]: file.name },
+    });
+    input.value = "";
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearSound(type: "water" | "exercise" | "normal") {
+  store.updateAppearance({
+    customSoundPaths: { ...settings.value.appearance.customSoundPaths, [type]: "" },
+    customSoundNames: { ...settings.value.appearance.customSoundNames, [type]: "" },
+  });
+}
+
+function playPreview(type: "water" | "exercise" | "normal") {
+  const vol = settings.value.appearance.soundVolume;
+  const dataUrl = settings.value.appearance.customSoundPaths[type];
+  if (dataUrl) {
+    playSoundFile(dataUrl, vol).catch(() => playReminderSound(type, vol));
+  } else {
+    playReminderSound(type, vol);
+  }
+}
 </script>
 
 <template>
@@ -312,6 +361,7 @@ function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(
             <select v-model="settings.appearance.reminderSound">
               <option value="off">关闭</option>
               <option value="simple">简单音调</option>
+              <option value="custom">自定义</option>
             </select>
           </div>
           <div v-if="settings.appearance.reminderSound !== 'off'" class="preview-row">
@@ -323,6 +373,30 @@ function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(
             <label>音量</label>
             <input v-model.number="settings.appearance.soundVolume" type="range" min="0" max="1" step="0.05" />
             <span class="value">{{ Math.round(settings.appearance.soundVolume * 100) }}%</span>
+          </div>
+          <div v-if="settings.appearance.reminderSound === 'custom'" class="custom-sound-section">
+            <div class="sound-file-row">
+              <span class="sound-type-label">💧 喝水</span>
+              <span class="sound-filename">{{ fileName('water') || '未选择' }}</span>
+              <button class="small-btn" @click="selectSound('water')">选择</button>
+              <button v-if="settings.appearance.customSoundPaths.water" class="small-btn" @click="clearSound('water')">清除</button>
+              <button class="small-btn" @click="playPreview('water')">试听</button>
+            </div>
+            <div class="sound-file-row">
+              <span class="sound-type-label">💪 运动</span>
+              <span class="sound-filename">{{ fileName('exercise') || '未选择' }}</span>
+              <button class="small-btn" @click="selectSound('exercise')">选择</button>
+              <button v-if="settings.appearance.customSoundPaths.exercise" class="small-btn" @click="clearSound('exercise')">清除</button>
+              <button class="small-btn" @click="playPreview('exercise')">试听</button>
+            </div>
+            <div class="sound-file-row">
+              <span class="sound-type-label">🔔 普通</span>
+              <span class="sound-filename">{{ fileName('normal') || '未选择' }}</span>
+              <button class="small-btn" @click="selectSound('normal')">选择</button>
+              <button v-if="settings.appearance.customSoundPaths.normal" class="small-btn" @click="clearSound('normal')">清除</button>
+              <button class="small-btn" @click="playPreview('normal')">试听</button>
+            </div>
+            <input ref="fileInputRef" type="file" accept="audio/mpeg" style="display:none" @change="onFileSelected" />
           </div>
         </div>
       </div>
@@ -532,4 +606,44 @@ function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(
 }
 .btn.save { background: #7c3aed; color: #fff; border-color: #7c3aed; }
 .btn.cancel { background: #fff; color: #555; }
+.custom-sound-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--camo-border);
+}
+.sound-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+}
+.sound-type-label {
+  min-width: 40px;
+  font-weight: 600;
+  color: var(--camo-text);
+}
+.sound-filename {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--camo-muted);
+  font-size: 0.95em;
+}
+.small-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--camo-border);
+  border-radius: 4px;
+  background: var(--camo-surface);
+  color: var(--camo-text);
+  font-size: 0.9em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.small-btn:hover {
+  background: rgba(124,58,237,0.08);
+}
 </style>

@@ -25,7 +25,7 @@ import {
   toggleToolWindow,
 } from "./core/windowManager";
 import { applyAppearance, darkModeLabel, nextDarkModePreference } from "./core/appearance";
-import { playReminderSound } from "./core/audio";
+import { playReminderSound, playSoundFile } from "./core/audio";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const camo = useCamoStore();
@@ -49,11 +49,33 @@ const petSide = computed<"left" | "right">(() => {
   return petOffset.value.x < -midX + 200 ? "left" : "right";
 });
 
+let reminderSoundTimer: ReturnType<typeof setInterval> | undefined;
+
+function stopReminderSoundLoop() {
+  if (reminderSoundTimer) {
+    clearInterval(reminderSoundTimer);
+    reminderSoundTimer = undefined;
+  }
+}
+
+function startReminderSoundLoop(type: "water" | "exercise" | "normal", volume: number) {
+  stopReminderSoundLoop();
+  const paths = settingsStore.settings.appearance.customSoundPaths;
+  const play = () => {
+    const dataUrl = paths[type];
+    if (dataUrl) playSoundFile(dataUrl, volume).catch(() => playReminderSound(type, volume));
+    else playReminderSound(type, volume);
+  };
+  play();
+  reminderSoundTimer = setInterval(play, 2000);
+}
+
 const scheduler = new ReminderScheduler(
   (reminder) => {
     const typeMap = { water: "water", exercise: "exercise", normal: "normal" } as const;
     const t = typeMap[reminder.type];
-    if (settingsStore.settings.appearance.reminderSound !== "off") playReminderSound(t, settingsStore.settings.appearance.soundVolume);
+    const app = settingsStore.settings.appearance;
+    if (app.reminderSound !== "off") startReminderSoundLoop(t, app.soundVolume);
     camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
     if (isTauri) {
       localStorage.setItem(`camo.activeReminder.${reminder.id}`, JSON.stringify(reminder));
@@ -66,6 +88,10 @@ const scheduler = new ReminderScheduler(
   (ts) => reminderStore.setNextWaterAt(ts),
   (id, ts) => reminderStore.setNextTrigger(id, ts),
 );
+
+watch(() => reminderStore.activeReminder, (val) => {
+  if (!val) stopReminderSoundLoop();
+});
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
@@ -92,6 +118,7 @@ function resetInactivityTimer() {
 }
 
 function handleReminderAction(payload: { action?: string; reminderId?: string; reminderType?: string; createdAt?: number }) {
+  stopReminderSoundLoop();
   const action = payload.action ?? "";
   const createdAt = payload.createdAt ?? 0;
   if (!isPetWindow.value || createdAt <= lastReminderActionAt) return;
@@ -152,6 +179,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  stopReminderSoundLoop();
   frameUnlisteners.forEach((unlisten) => unlisten());
   frameUnlisteners = [];
   focusUnlisten?.();
