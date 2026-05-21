@@ -7,6 +7,7 @@ import type { LLMProviderName } from "../core/llm/types";
 import { isTauri } from "../core/platform";
 import { getAutostartEnabled, setAutostartEnabled } from "../core/autostart";
 import { version } from "../../package.json";
+import { playReminderSound } from "../core/audio";
 
 const emit = defineEmits<{ close: [] }>();
 const props = defineProps<{ petSide?: "left" | "right"; standalone?: boolean; locked?: boolean }>();
@@ -123,6 +124,7 @@ function onDragMove(e: PointerEvent) {
   pos.value = { x: e.clientX - dragStart.value.x, y: e.clientY - dragStart.value.y };
 }
 function onDragEnd() { dragging.value = false; }
+function playPreview(type: "water" | "exercise" | "normal") { playReminderSound(type); }
 </script>
 
 <template>
@@ -305,10 +307,18 @@ function onDragEnd() { dragging.value = false; }
 
         <div class="settings-group">
           <h3>音效</h3>
-          <label class="check-row">
-            <input v-model="settings.appearance.reminderSound" type="checkbox" />
-            <span>提醒音效</span>
-          </label>
+          <div class="row">
+            <label>提醒音效</label>
+            <select v-model="settings.appearance.reminderSound">
+              <option value="off">关闭</option>
+              <option value="simple">简单音调</option>
+            </select>
+          </div>
+          <div v-if="settings.appearance.reminderSound !== 'off'" class="preview-row">
+            <button class="preview-btn" @click="playPreview('water')">💧 试听</button>
+            <button class="preview-btn" @click="playPreview('exercise')">💪 试听</button>
+            <button class="preview-btn" @click="playPreview('normal')">🔔 试听</button>
+          </div>
         </div>
       </div>
 
@@ -467,6 +477,24 @@ function onDragEnd() { dragging.value = false; }
   margin: 0;
   font-size: 1em;
   color: var(--camo-text);
+}
+.preview-row {
+  display: flex;
+  gap: 6px;
+}
+.preview-btn {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--camo-border);
+  border-radius: 6px;
+  background: var(--camo-surface);
+  color: var(--camo-text);
+  font-size: 0.85em;
+  cursor: pointer;
+  text-align: center;
+}
+.preview-btn:hover {
+  background: rgba(124,58,237,0.08);
 }
 .check-row {
   display: flex;

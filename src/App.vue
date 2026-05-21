@@ -50,7 +50,7 @@ const scheduler = new ReminderScheduler(
   (reminder) => {
     const typeMap = { water: "water", exercise: "exercise", normal: "normal" } as const;
     const t = typeMap[reminder.type];
-    if (settingsStore.settings.appearance.reminderSound) playReminderSound(t);
+    if (settingsStore.settings.appearance.reminderSound !== "off") playReminderSound(t);
     camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
     reminderStore.trigger(reminder);
   },
