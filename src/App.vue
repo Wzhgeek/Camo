@@ -17,6 +17,8 @@ import {
   closeCurrentWindow,
   currentWindowKind,
   installWindowFramePersistence,
+  openContextMenuWindow,
+  openReminderAlertWindow,
   openToolWindow,
   resetCurrentWindowPosition,
   syncPetWindowSize,
@@ -36,6 +38,7 @@ const scale = ref(settingsStore.settings.layout.scale);
 const petOffset = ref({ x: 0, y: 0 });
 const contextMenu = ref<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 const isPetWindow = computed(() => currentWindowKind === "pet");
+const isContextMenuWindow = computed(() => currentWindowKind === "context-menu");
 const currentBehavior = computed(() => isPetWindow.value
   ? settingsStore.settings.windowPreferences.pet
   : settingsStore.settings.windowPreferences.tools);
@@ -52,7 +55,12 @@ const scheduler = new ReminderScheduler(
     const t = typeMap[reminder.type];
     if (settingsStore.settings.appearance.reminderSound !== "off") playReminderSound(t, settingsStore.settings.appearance.soundVolume);
     camo.transition({ type: "REMINDER_TRIGGERED", reminderType: t });
-    reminderStore.trigger(reminder);
+    if (isTauri) {
+      localStorage.setItem(`camo.activeReminder.${reminder.id}`, JSON.stringify(reminder));
+      void openReminderAlertWindow(reminder.id);
+    } else {
+      reminderStore.trigger(reminder);
+    }
   },
   () => settingsStore.settings.waterReminder,
   (ts) => reminderStore.setNextWaterAt(ts),
@@ -62,6 +70,8 @@ const scheduler = new ReminderScheduler(
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
 let frameUnlisteners: UnlistenFn[] = [];
+let focusUnlisten: UnlistenFn | undefined;
+let lastReminderActionAt = 0;
 
 function applyLocalWindowVariables() {
   const root = document.documentElement;
@@ -81,6 +91,34 @@ function resetInactivityTimer() {
   inactivityTimer = setTimeout(() => camo.transition({ type: "IDLE_TIMEOUT" }), IDLE_TIMEOUT_MS);
 }
 
+function handleReminderAction(payload: { action?: string; reminderId?: string; reminderType?: string; createdAt?: number }) {
+  const action = payload.action ?? "";
+  const createdAt = payload.createdAt ?? 0;
+  if (!isPetWindow.value || createdAt <= lastReminderActionAt) return;
+  lastReminderActionAt = createdAt;
+  if (action === "later") {
+    if (payload.reminderType === "water" || payload.reminderId === "__water__") {
+      scheduler.snoozeWater(10);
+    } else if (payload.reminderId) {
+      scheduler.resetReminder(payload.reminderId);
+    }
+  }
+  reminderStore.refreshReminders();
+  if (action === "done") {
+    camo.transition({ type: "TASK_DONE" });
+    camo.returnToIdle(2500);
+  } else {
+    camo.returnToIdle(700);
+  }
+}
+
+function handleReminderActionStorage(e: StorageEvent) {
+  if (e.key !== "camo.reminderAction" || !e.newValue) return;
+  try {
+    handleReminderAction(JSON.parse(e.newValue));
+  } catch {}
+}
+
 watch(state, (s) => {
   if (s === "idle") resetInactivityTimer();
   else clearInactivityTimer();
@@ -94,6 +132,13 @@ onMounted(() => {
   installWindowFramePersistence(currentWindowKind).then((unlisteners) => {
     frameUnlisteners = unlisteners;
   });
+  if (isContextMenuWindow.value && isTauri) {
+    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        if (!focused) closeCurrentWindow().catch(() => {});
+      }).then((unlisten) => { focusUnlisten = unlisten; }).catch(() => {});
+    }).catch(() => {});
+  }
 
   if (isPetWindow.value) {
     scheduler.start();
@@ -101,6 +146,7 @@ onMounted(() => {
     window.addEventListener("mousemove", resetInactivityTimer, { passive: true });
     window.addEventListener("keydown", resetInactivityTimer, { passive: true });
     window.addEventListener("click", resetInactivityTimer, { passive: true });
+    window.addEventListener("storage", handleReminderActionStorage);
     resetInactivityTimer();
   }
 });
@@ -108,11 +154,14 @@ onMounted(() => {
 onUnmounted(() => {
   frameUnlisteners.forEach((unlisten) => unlisten());
   frameUnlisteners = [];
+  focusUnlisten?.();
+  focusUnlisten = undefined;
   if (isPetWindow.value) scheduler.stop();
   clearInactivityTimer();
   window.removeEventListener("mousemove", resetInactivityTimer);
   window.removeEventListener("keydown", resetInactivityTimer);
   window.removeEventListener("click", resetInactivityTimer);
+  window.removeEventListener("storage", handleReminderActionStorage);
 });
 
 watch(llmPhase, (phase) => {
@@ -147,10 +196,10 @@ function handlePetClick() {
 }
 
 function toggleDarkMode() {
-  contextMenu.value.show = false;
   settingsStore.updateAppearance({
     darkMode: nextDarkModePreference(settingsStore.settings.appearance.darkMode),
   });
+  closeContextMenu();
 }
 
 function closeChatPanel() {
@@ -173,57 +222,38 @@ function handlePetDrag(pos: { x: number; y: number }) {
 function handleContextMenu(e: MouseEvent) {
   if (!isPetWindow.value) return;
   e.preventDefault();
+  if (isTauri) {
+    void openContextMenuWindow(e.clientX, e.clientY);
+    return;
+  }
   const menuW = 100;
   const menuH = 124;
   const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
   const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
   contextMenu.value = { show: true, x, y };
 }
-
-let menuClickHandler: ((ev: MouseEvent) => void) | null = null;
 
 function closeContextMenu() {
   contextMenu.value.show = false;
-  if (menuClickHandler) {
-    window.removeEventListener('click', menuClickHandler, true);
-    menuClickHandler = null;
-  }
-}
-
-function handleContextMenu(e: MouseEvent) {
-  if (!isPetWindow.value) return;
-  e.preventDefault();
-  const menuW = 100;
-  const menuH = 124;
-  const x = Math.min(e.clientX, window.innerWidth - menuW - 8);
-  const y = Math.min(e.clientY, window.innerHeight - menuH - 8);
-  contextMenu.value = { show: true, x, y };
-  closeContextMenu();
-  menuClickHandler = (ev: MouseEvent) => {
-    const target = ev.target as HTMLElement;
-    if (!target.closest('.context-menu')) closeContextMenu();
-  };
-  setTimeout(() => window.addEventListener('click', menuClickHandler, true), 0);
+  if (isContextMenuWindow.value) closeCurrentWindow().catch(() => {});
 }
 
 function toggleLock() {
-  contextMenu.value.show = false;
   const current = settingsStore.settings.windowPreferences.pet.locked;
   settingsStore.updateWindowPreferences({ pet: { ...settingsStore.settings.windowPreferences.pet, locked: !current } });
+  closeContextMenu();
 }
 
 function openSettings() {
-  contextMenu.value.show = false;
-  openToolWindow("settings");
+  void openToolWindow("settings").finally(closeContextMenu);
 }
 
 function openReminders() {
-  contextMenu.value.show = false;
-  openToolWindow("reminders");
+  void openToolWindow("reminders").finally(closeContextMenu);
 }
 
 async function exitApp() {
-  contextMenu.value.show = false;
+  closeContextMenu();
   try {
     const { getAllWindows } = await import("@tauri-apps/api/window");
     const windows = await getAllWindows();
@@ -272,10 +302,11 @@ function handleWheel(e: WheelEvent) {
     />
 
     <div
-      v-if="contextMenu.show"
+      v-if="contextMenu.show || isContextMenuWindow"
       data-camo-surface
       class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      :class="{ standalone: isContextMenuWindow }"
+      :style="isContextMenuWindow ? undefined : { left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
       <button class="context-item" @click="openSettings">设置</button>
@@ -299,7 +330,7 @@ function handleWheel(e: WheelEvent) {
       :pet-side="petSide"
       @close="closeReminderPanel"
     />
-    <ReminderBubble v-if="currentWindowKind === 'pet'" />
+    <ReminderBubble v-if="currentWindowKind === 'pet' || currentWindowKind === 'reminder-alert'" />
   </main>
 </template>
 
@@ -322,6 +353,17 @@ function handleWheel(e: WheelEvent) {
 .camo-workspace.window-chat,
 .camo-workspace.window-settings,
 .camo-workspace.window-reminders {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+.camo-workspace.window-reminder-alert {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+}
+.camo-workspace.window-context-menu {
   display: block;
   padding: 0;
   background: transparent;
@@ -742,8 +784,8 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
 
 .context-menu {
   position: fixed;
-  padding: 3px;
-  border-radius: 6px;
+  padding: 5px;
+  border-radius: 12px;
   background: var(--camo-surface-strong);
   border: 1px solid var(--camo-border);
   box-shadow: 0 4px 12px rgba(53,42,70,0.14);
@@ -753,10 +795,16 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
   z-index: 9999;
   user-select: none;
 }
+.context-menu.standalone {
+  position: static;
+  width: 100vw;
+  height: 100vh;
+  justify-content: flex-start;
+}
 .context-item {
   display: block;
   width: 100%;
-  padding: 3px 8px;
+  padding: 4px 7px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -766,7 +814,7 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  line-height: 1.6;
+  line-height: 1.35;
 }
 .context-item:hover { background: rgba(127,90,240,0.1); color: var(--camo-menu-text); }
 .context-item.danger { color: #d92d20; }

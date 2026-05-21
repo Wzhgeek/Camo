@@ -12,14 +12,20 @@ import { isTauri } from "./platform";
 import type { LayoutConfig, WindowFrame } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
-export type AppWindowKind = "pet" | "chat" | "settings" | "reminders";
-export type ToolWindowKind = Exclude<AppWindowKind, "pet">;
+export type ToolWindowKind = "chat" | "settings" | "reminders";
+export type AppWindowKind = "pet" | ToolWindowKind | "reminder-alert" | "context-menu";
+type FramedWindowKind = "pet" | ToolWindowKind;
 
 const SAFE_MARGIN = 12;
 const PET_BASE_SIZE = { width: 180, height: 210 };
+const REMINDER_ALERT_SIZE = { width: 300, height: 220 };
+const REMINDER_ALERT_LABELS = ["reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3"] as const;
+type ReminderAlertLabel = typeof REMINDER_ALERT_LABELS[number];
+const REMINDER_ALERT_CASCADE_GAP = 28;
+const CONTEXT_MENU_SIZE = { width: 112, height: 128 };
 const FOLLOW_GAP = 14;
 const MAX_RELATIVE_DISTANCE = 420;
-const ALL_WINDOW_KINDS: AppWindowKind[] = ["pet", "chat", "settings", "reminders"];
+const ALL_FRAMED_WINDOW_KINDS: FramedWindowKind[] = ["pet", "chat", "settings", "reminders"];
 
 const TOOL_WINDOW_OPTIONS: Record<ToolWindowKind, {
   title: string;
@@ -37,12 +43,18 @@ function getWindowKindFromUrl(): AppWindowKind {
   const params = new URLSearchParams(window.location.search);
   const value = params.get("window");
   if (value === "chat" || value === "settings" || value === "reminders") return value;
+  if (value === "reminder-alert") return value;
+  if (value === "context-menu") return value;
   return "pet";
 }
 
 export const currentWindowKind = getWindowKindFromUrl();
 
-function frameFor(layout: LayoutConfig, kind: AppWindowKind): WindowFrame {
+function isFramedWindowKind(kind: AppWindowKind): kind is FramedWindowKind {
+  return kind !== "reminder-alert" && kind !== "context-menu";
+}
+
+function frameFor(layout: LayoutConfig, kind: FramedWindowKind): WindowFrame {
   return layout[kind];
 }
 
@@ -51,7 +63,7 @@ function behaviorFor(kind: AppWindowKind) {
   return kind === "pet" ? store.settings.windowPreferences.pet : store.settings.windowPreferences.tools;
 }
 
-function updateFrame(kind: AppWindowKind, frame: Partial<WindowFrame>) {
+function updateFrame(kind: FramedWindowKind, frame: Partial<WindowFrame>) {
   const store = useSettingsStore();
   store.updateLayout({
     [kind]: {
@@ -138,6 +150,7 @@ function clampFrame(frame: WindowFrame, workArea: NonNullable<Awaited<ReturnType
 }
 
 async function clampCurrentWindow(kind: AppWindowKind) {
+  if (!isFramedWindowKind(kind)) return;
   const frame = await readCurrentLogicalFrame();
   const workArea = await getLogicalWorkArea();
   if (!frame || !workArea) return;
@@ -184,13 +197,14 @@ function placeFollowerNearLeader(
   }, workArea);
 }
 
-async function setWindowFrame(win: Window | WebviewWindow, kind: AppWindowKind, frame: Required<WindowFrame>) {
+async function setWindowFrame(win: Window | WebviewWindow, kind: FramedWindowKind, frame: Required<WindowFrame>) {
   await win.setSize(new LogicalSize(frame.width, frame.height)).catch(() => {});
   await win.setPosition(new LogicalPosition(frame.x, frame.y)).catch(() => {});
   updateFrame(kind, frame);
 }
 
 async function keepRelatedWindowsNear(movedKind: AppWindowKind) {
+  if (!isFramedWindowKind(movedKind)) return;
   const workArea = await getLogicalWorkArea();
   if (!workArea) return;
 
@@ -200,7 +214,7 @@ async function keepRelatedWindowsNear(movedKind: AppWindowKind) {
   if (!movedFrame) return;
 
   if (movedKind === "pet") {
-    for (const kind of ALL_WINDOW_KINDS) {
+    for (const kind of ALL_FRAMED_WINDOW_KINDS) {
       if (kind === "pet") continue;
       const tool = await WebviewWindow.getByLabel(kind).catch(() => null);
       if (!tool) continue;
@@ -286,6 +300,104 @@ export async function openToolWindow(kind: ToolWindowKind) {
   }).catch(() => {});
 }
 
+async function defaultContextMenuFrame(clientX: number, clientY: number): Promise<Required<WindowFrame>> {
+  const workArea = await getLogicalWorkArea();
+  const anchor = await readCurrentLogicalFrame();
+  const width = CONTEXT_MENU_SIZE.width;
+  const height = CONTEXT_MENU_SIZE.height;
+  const x = (anchor?.x ?? 80) + clientX;
+  const y = (anchor?.y ?? 80) + clientY;
+  if (!workArea) return { x, y, width, height };
+  return clampFrame({ x, y, width, height }, workArea);
+}
+
+export async function openContextMenuWindow(clientX: number, clientY: number) {
+  if (!isTauri) return;
+  const existing = await WebviewWindow.getByLabel("context-menu").catch(() => null);
+  if (existing) await existing.close().catch(() => {});
+
+  const frame = await defaultContextMenuFrame(clientX, clientY);
+  const child = new WebviewWindow("context-menu", {
+    url: "/?window=context-menu",
+    title: "Camo Menu",
+    x: frame.x,
+    y: frame.y,
+    width: frame.width,
+    height: frame.height,
+    decorations: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    visibleOnAllWorkspaces: true,
+    skipTaskbar: true,
+    shadow: true,
+    preventOverflow: { width: SAFE_MARGIN, height: SAFE_MARGIN },
+  });
+
+  child.once("tauri://created", () => {
+    child.setFocus().catch(() => {});
+  }).catch(() => {});
+}
+
+async function defaultReminderAlertFrame(slotIndex: number): Promise<Required<WindowFrame>> {
+  const workArea = await getLogicalWorkArea();
+  const width = REMINDER_ALERT_SIZE.width;
+  const height = REMINDER_ALERT_SIZE.height;
+  const offset = slotIndex * REMINDER_ALERT_CASCADE_GAP;
+  if (!workArea) return { x: 120 + offset, y: 120 + offset, width, height };
+  return clampFrame({
+    width,
+    height,
+    x: workArea.x + (workArea.width - width) / 2 + offset,
+    y: workArea.y + (workArea.height - height) / 2 + offset,
+  }, workArea);
+}
+
+export async function openReminderAlertWindow(reminderId: string) {
+  if (!isTauri) return;
+
+  let label: ReminderAlertLabel = REMINDER_ALERT_LABELS[0];
+  let slotIndex = 0;
+  for (const [index, candidate] of REMINDER_ALERT_LABELS.entries()) {
+    const existing = await WebviewWindow.getByLabel(candidate).catch(() => null);
+    if (!existing) {
+      label = candidate;
+      slotIndex = index;
+      break;
+    }
+    if (index === REMINDER_ALERT_LABELS.length - 1) {
+      await existing.close().catch(() => {});
+      label = candidate;
+      slotIndex = index;
+    }
+  }
+
+  const frame = await defaultReminderAlertFrame(slotIndex);
+  const behavior = useSettingsStore().settings.windowPreferences.tools;
+  const child = new WebviewWindow(label, {
+    url: `/?window=reminder-alert&reminderId=${encodeURIComponent(reminderId)}`,
+    title: "Camo Reminder",
+    x: frame.x,
+    y: frame.y,
+    width: frame.width,
+    height: frame.height,
+    minWidth: 260,
+    minHeight: 180,
+    decorations: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: behavior.alwaysOnTop,
+    visibleOnAllWorkspaces: behavior.alwaysOnTop,
+    skipTaskbar: false,
+    shadow: false,
+    preventOverflow: { width: SAFE_MARGIN, height: SAFE_MARGIN },
+  });
+
+  child.once("tauri://created", () => {
+    child.setFocus().catch(() => {});
+  }).catch(() => {});
+}
+
 export async function toggleToolWindow(kind: ToolWindowKind) {
   if (!isTauri) return;
   const existing = await WebviewWindow.getByLabel(kind).catch(() => null);
@@ -324,6 +436,7 @@ export async function applyCurrentWindowPreferences(kind: AppWindowKind) {
 
 export async function resetCurrentWindowPosition(kind: AppWindowKind) {
   if (!isTauri) return;
+  if (!isFramedWindowKind(kind)) return;
   const behavior = behaviorFor(kind);
   if (behavior.positionMode === "free") return;
   const workArea = await getLogicalWorkArea();
@@ -343,6 +456,7 @@ export async function resetCurrentWindowPosition(kind: AppWindowKind) {
 
 export async function installWindowFramePersistence(kind: AppWindowKind): Promise<UnlistenFn[]> {
   if (!isTauri) return [];
+  if (!isFramedWindowKind(kind)) return [];
   const win = getCurrentWindow();
   const unlisteners: UnlistenFn[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;

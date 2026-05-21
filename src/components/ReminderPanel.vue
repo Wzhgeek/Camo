@@ -18,6 +18,7 @@ const { nextWaterAt, nextTriggerMap, reminders } = storeToRefs(reminderStoreRef)
 
 const now = ref(Date.now());
 let tickTimer: number | undefined;
+const localWaterBase = ref(readNumberFromStorage("camo.scheduler.lastWater") || Date.now());
 
 const waterEnabled = ref(settings.value.waterReminder.enabled);
 const waterInterval = ref(settings.value.waterReminder.intervalMinutes);
@@ -50,16 +51,25 @@ const panelStyle = computed(() => {
 });
 
 onMounted(() => {
-  tickTimer = window.setInterval(() => { now.value = Date.now(); }, 1000);
+  tickTimer = window.setInterval(() => {
+    now.value = Date.now();
+    localWaterBase.value = readNumberFromStorage("camo.scheduler.lastWater") || localWaterBase.value;
+  }, 1000);
 });
 onUnmounted(() => { if (tickTimer) clearInterval(tickTimer); });
 
 const waterCountdown = computed(() => {
-  if (!waterEnabled.value || !nextWaterAt.value) return "";
-  const diff = nextWaterAt.value - now.value;
-  if (diff <= 0) return "即将提醒";
+  if (!waterEnabled.value) return "";
+  const target = nextWaterAt.value || localWaterBase.value + waterInterval.value * 60000;
+  const diff = target - now.value;
+  if (diff <= 0) return "到点提醒";
   return formatCountdown(diff);
 });
+
+function readNumberFromStorage(key: string): number {
+  const value = Number(localStorage.getItem(key));
+  return Number.isFinite(value) ? value : 0;
+}
 
 function formatCountdown(diff: number): string {
   const d = Math.floor(diff / 86400000);
@@ -77,19 +87,32 @@ function countdown(r: Reminder): string {
     const nextTs = nextTriggerMap.value[r.id];
     if (nextTs) {
       const diff = nextTs - now.value;
-      if (diff <= 0) return "即将提醒";
+      if (diff <= 0) return "到点提醒";
       return formatCountdown(diff);
     }
     const intervalMin = r.schedulePayload.intervalMinutes as number | undefined;
-    return intervalMin ? `每 ${intervalMin} 分钟` : "循环";
+    if (!intervalMin) return "循环";
+    const trackers = readIntervalTrackers();
+    const base = trackers[r.id] || new Date(r.updatedAt || r.createdAt).getTime();
+    const intervalMs = intervalMin * 60000;
+    const elapsed = Math.max(0, now.value - base);
+    const next = base + (Math.floor(elapsed / intervalMs) + 1) * intervalMs;
+    return formatCountdown(next - now.value);
   }
-  if (r.scheduleKind === "daily") {
+  if (r.scheduleKind === "daily" || r.scheduleKind === "workdays" || r.scheduleKind === "weekends" || r.scheduleKind === "date_range") {
     const time = r.schedulePayload.time as string | undefined;
-    if (!time) return "每天";
-    const [h, m] = time.split(":").map(Number);
-    const candidate = new Date(); candidate.setHours(h, m, 0, 0);
-    if (candidate.getTime() <= now.value) candidate.setDate(candidate.getDate() + 1);
-    return formatCountdown(candidate.getTime() - now.value);
+    if (!time) return scheduleLabel(r);
+    const candidate = nextScheduledTime(time, r);
+    return candidate ? formatCountdown(candidate - now.value) : "未在范围内";
+  }
+  if (r.scheduleKind === "fixedTimes") {
+    const times = r.schedulePayload.times as string[] | undefined;
+    if (!Array.isArray(times) || times.length === 0) return "固定时段";
+    const next = times
+      .map((time) => nextScheduledTime(time, r))
+      .filter((ts): ts is number => typeof ts === "number")
+      .sort((a, b) => a - b)[0];
+    return next ? formatCountdown(next - now.value) : "未在范围内";
   }
   const runAt = r.schedulePayload.runAt as string | undefined;
   if (!runAt) return "--";
@@ -98,14 +121,56 @@ function countdown(r: Reminder): string {
   return formatCountdown(diff);
 }
 
+function nextScheduledTime(time: string, r: Reminder): number | null {
+  const [h, m] = time.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  for (let offset = 0; offset < 14; offset += 1) {
+    const candidate = new Date(now.value);
+    candidate.setDate(candidate.getDate() + offset);
+    candidate.setHours(h, m, 0, 0);
+    if (candidate.getTime() <= now.value) continue;
+    if (!isAllowedScheduleDate(candidate, r)) continue;
+    return candidate.getTime();
+  }
+  return null;
+}
+
+function isAllowedScheduleDate(date: Date, r: Reminder): boolean {
+  const dow = date.getDay();
+  const dateStr = date.toISOString().slice(0, 10);
+  if (r.scheduleKind === "workdays") return dow >= 1 && dow <= 5;
+  if (r.scheduleKind === "weekends") return dow === 0 || dow === 6;
+  if (r.scheduleKind === "date_range") {
+    const startDate = r.schedulePayload.startDate as string | undefined;
+    const endDate = r.schedulePayload.endDate as string | undefined;
+    return !!startDate && !!endDate && dateStr >= startDate && dateStr <= endDate;
+  }
+  return true;
+}
+
+function readIntervalTrackers(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem("camo.scheduler.intervals") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 function scheduleLabel(r: { scheduleKind: string }): string {
   const map: Record<string, string> = {
-    once: "一次", daily: "每天", interval: "循环",
+    once: "一次",
+    daily: "每天",
+    interval: "循环",
+    fixedTimes: "固定时段",
+    workdays: "工作日",
+    weekends: "周末",
+    date_range: "日期范围",
   };
   return map[r.scheduleKind] || r.scheduleKind;
 }
 
 function saveWater() {
+  localWaterBase.value = readNumberFromStorage("camo.scheduler.lastWater") || Date.now();
   store.updateWaterReminder({
     enabled: waterEnabled.value,
     intervalMinutes: waterInterval.value,
@@ -189,12 +254,12 @@ function onDragEnd() { dragging.value = false; }
           <input type="checkbox" v-model="waterEnabled" @change="saveWater" />
           <input type="number" v-model.number="waterInterval" min="1" class="num-input" :disabled="!waterEnabled" @change="saveWater" />
           <span class="unit">分钟</span>
+          <span v-if="waterCountdown" class="water-cd">{{ waterCountdown }}</span>
         </div>
         <div v-if="waterEnabled" class="water-row">
           <input type="time" v-model="waterStart" class="time-input" @change="saveWater" />
           <span class="unit">~</span>
           <input type="time" v-model="waterEnd" class="time-input" @change="saveWater" />
-          <span v-if="waterCountdown" class="water-cd">{{ waterCountdown }}</span>
         </div>
       </section>
 
@@ -333,6 +398,7 @@ function onDragEnd() { dragging.value = false; }
 .water-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 5px 6px;
   border-radius: 6px;
@@ -365,7 +431,7 @@ function onDragEnd() { dragging.value = false; }
 }
 .row input[type="checkbox"] { flex: none; width: 13px; height: 13px; }
 .num-input { width: 48px !important; flex: none !important; }
-.time-input { width: 72px !important; flex: none !important; }
+.time-input { width: 88px !important; flex: none !important; }
 .unit { font-size: 0.9em; color: var(--camo-muted); }
 .add-btn {
   background: none; border: 1px solid #ddd; border-radius: 4px;
@@ -393,7 +459,12 @@ function onDragEnd() { dragging.value = false; }
 .reminder-info { flex: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
 .r-title { font-size: 1em; color: var(--camo-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-meta { font-size: 0.82em; color: #888; }
-.countdown { color: #7c3aed; font-weight: 600; }
+.countdown {
+  display: inline-block;
+  color: #7c3aed;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .del-btn {
   background: none; border: none; color: #d92d20;
   cursor: pointer; font-size: 1.1em; padding: 0 3px;

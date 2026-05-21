@@ -38,7 +38,7 @@ export class ReminderScheduler {
     this.loadIntervalTrackers();
     this.reportNextWater();
     this.tick();
-    this.timer = window.setInterval(() => this.tick(), 10_000);
+    this.timer = window.setInterval(() => this.tick(), 1000);
   }
 
   stop() {
@@ -46,6 +46,19 @@ export class ReminderScheduler {
       window.clearInterval(this.timer);
       this.timer = undefined;
     }
+  }
+
+  resetReminder(id: string) {
+    this.firedOnceIds.delete(id);
+    this.intervalTrackers.delete(id);
+    this.saveIntervalTrackers();
+  }
+
+  snoozeWater(minutes: number) {
+    const intervalMs = Math.max(1, this.getWaterConfig?.().intervalMinutes ?? 60) * 60000;
+    this.lastWaterTrigger = Date.now() - intervalMs + Math.max(1, minutes) * 60000;
+    this.saveLastWaterTrigger();
+    this.reportNextWater();
   }
 
   private loadLastWaterTrigger(): number {
@@ -118,6 +131,20 @@ export class ReminderScheduler {
           if (this.onNextTrigger) {
             const last = this.intervalTrackers.get(r.id) || now;
             this.onNextTrigger(r.id, last + intervalMin * 60000);
+          }
+        }
+      } else if (r.scheduleKind === "fixedTimes") {
+        const times = r.schedulePayload.times as string[] | undefined;
+        if (Array.isArray(times)) {
+          for (const time of times) {
+            const [h, m] = time.split(":").map(Number);
+            if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+            const target = new Date(); target.setHours(h, m, 0, 0);
+            const firedKey = `${r.id}:${time}`;
+            if (now >= target.getTime() && this.dailyFiredDates.get(firedKey) !== todayStr) {
+              this.dailyFiredDates.set(firedKey, todayStr);
+              this.onTrigger(r);
+            }
           }
         }
       } else if (r.scheduleKind === "workdays") {

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for Camo pet and tool windows",
-  "windows": ["main", "chat", "settings", "reminders"],
+  "windows": ["main", "chat", "settings", "reminders", "reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3", "context-menu"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",

@@ -1,13 +1,59 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useReminderStore } from "../stores/reminderStore";
 import { useCamoStore } from "../stores/camoStore";
 import { reminderService } from "../core/reminder/reminderService";
+import type { Reminder } from "../core/reminder/types";
+import { closeCurrentWindow, currentWindowKind } from "../core/windowManager";
 import { Droplets, Dumbbell, Bell } from "lucide-vue-next";
 
 const reminder = useReminderStore();
 const camo = useCamoStore();
 const { activeReminder } = storeToRefs(reminder);
+const routeReminderId = new URLSearchParams(window.location.search).get("reminderId");
+const isAlertWindow = currentWindowKind === "reminder-alert";
+
+onMounted(() => {
+  if (!routeReminderId || activeReminder.value) return;
+  const triggeredReminder = reminderService.list().find((item) => item.id === routeReminderId) ?? readTriggeredReminder(routeReminderId);
+  if (triggeredReminder) reminder.trigger(triggeredReminder);
+});
+
+function readTriggeredReminder(id: string): Reminder | null {
+  try {
+    const raw = localStorage.getItem(`camo.activeReminder.${id}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearTriggeredReminder() {
+  if (routeReminderId) localStorage.removeItem(`camo.activeReminder.${routeReminderId}`);
+}
+
+function publishReminderAction(action: "done" | "later" | "skip") {
+  localStorage.setItem("camo.reminderAction", JSON.stringify({
+    action,
+    reminderId: activeReminder.value?.id,
+    reminderType: activeReminder.value?.type,
+    createdAt: Date.now(),
+  }));
+}
+
+function dismissWindowIfNeeded() {
+  if (isAlertWindow) closeCurrentWindow().catch(() => {});
+}
+
+function startAlertDrag(e: PointerEvent) {
+  if (!isAlertWindow) return;
+  const target = e.target as HTMLElement;
+  if (target.closest("button")) return;
+  import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
+    .catch(() => {});
+}
 
 function disableIfOnce() {
   if (activeReminder.value?.scheduleKind === "once") {
@@ -19,31 +65,45 @@ function disableIfOnce() {
 function done() {
   disableIfOnce();
   camo.transition({ type: "TASK_DONE" });
-  camo.returnToIdle(1200);
+  camo.returnToIdle(2500);
+  publishReminderAction("done");
   reminder.dismiss();
+  clearTriggeredReminder();
+  dismissWindowIfNeeded();
 }
 
 function later() {
   if (activeReminder.value) {
-    const laterTime = new Date(Date.now() + 10 * 60000).toISOString();
-    reminderService.update(activeReminder.value.id, {
-      enabled: true,
-      schedulePayload: { ...activeReminder.value.schedulePayload, runAt: laterTime },
-    });
+    if (activeReminder.value.id !== "__water__") {
+      const laterTime = new Date(Date.now() + 10 * 60000).toISOString();
+      reminderService.update(activeReminder.value.id, {
+        enabled: true,
+        scheduleKind: "once",
+        schedulePayload: { ...activeReminder.value.schedulePayload, runAt: laterTime },
+      });
+      reminder.refreshReminders();
+    }
   }
+  publishReminderAction("later");
   reminder.dismiss();
   camo.returnToIdle(400);
+  clearTriggeredReminder();
+  dismissWindowIfNeeded();
 }
 
 function skip() {
   disableIfOnce();
+  publishReminderAction("skip");
   reminder.dismiss();
   camo.returnToIdle(400);
+  clearTriggeredReminder();
+  dismissWindowIfNeeded();
 }
 </script>
 
 <template>
-  <div v-if="activeReminder" data-camo-surface class="reminder-bubble" @click.stop>
+  <div v-if="activeReminder" data-camo-surface class="reminder-bubble" @pointerdown="startAlertDrag" @click.stop>
+    <button v-if="isAlertWindow" class="bubble-close" @pointerdown.stop @click="skip" aria-label="关闭提醒">×</button>
     <div class="bubble-icon">
       <Droplets v-if="activeReminder.type === 'water'" :size="28" color="#7c3aed" />
       <Dumbbell v-else-if="activeReminder.type === 'exercise'" :size="28" color="#22c55e" />
@@ -72,6 +132,35 @@ function skip() {
   backdrop-filter: blur(20px);
   z-index: 8000;
   text-align: center;
+}
+.bubble-close {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--camo-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.bubble-close:hover {
+  background: rgba(127, 90, 240, 0.1);
+  color: var(--camo-bubble-text);
+}
+:global(.window-reminder-alert) .reminder-bubble {
+  position: relative;
+  width: min(260px, calc(100vw - 24px));
+  cursor: grab;
+  box-shadow: 0 12px 32px rgba(53, 42, 70, 0.14);
+}
+:global(.window-reminder-alert) .reminder-bubble:active {
+  cursor: grabbing;
 }
 html[data-camo-bubble-style="compact"] .reminder-bubble {
   width: 210px;
@@ -107,6 +196,7 @@ html[data-camo-bubble-style="soft"] .reminder-bubble {
   color: var(--camo-bubble-text);
   font-size: 12px;
   font-weight: 600;
+  cursor: pointer;
 }
 
 .bubble-btn:hover {
