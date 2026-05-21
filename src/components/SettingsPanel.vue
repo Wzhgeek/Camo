@@ -20,6 +20,38 @@ function resetAffection() {
   affectionStore.resetScore();
 }
 
+const updateChecking = ref(false);
+const updateMessage = ref("");
+async function checkForUpdates() {
+  if (!isTauri) return;
+  updateChecking.value = true;
+  updateMessage.value = "正在检查更新...";
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    if (update) {
+      updateMessage.value = `发现新版本 ${update.version}，正在下载...`;
+      await update.downloadAndInstall();
+      updateMessage.value = "更新已安装，重启应用后生效。";
+    } else {
+      updateMessage.value = "当前已是最新版本。";
+    }
+  } catch (error) {
+    updateMessage.value = `检查更新失败：${formatUpdaterError(error)}`;
+  }
+  updateChecking.value = false;
+}
+
+function formatUpdaterError(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "无法连接更新源或更新清单不存在";
+  }
+}
+
 const tab = ref<"llm" | "prompt" | "personalization" | "system" | "about">("llm");
 const provider = ref<LLMProviderName>(settings.value.llm.provider);
 const baseUrl = ref(settings.value.llm.baseUrl);
@@ -454,6 +486,10 @@ function playPreview(type: "water" | "exercise" | "normal") {
         <p>开发者：<b>wangzihan</b></p>
         <p>GitHub：<a href="https://github.com/wzhgeek/camo" target="_blank">wzhgeek/camo</a></p>
         <p style="opacity:0.6;font-size:10px;margin-top:6px">v{{ version }}</p>
+        <button v-if="isTauri" class="small-btn" style="margin-top:6px" :disabled="updateChecking" @click="checkForUpdates">
+          {{ updateChecking ? '检查中...' : '检查更新' }}
+        </button>
+        <p v-if="updateMessage" class="update-tip">{{ updateMessage }}</p>
       </div>
     </div>
 
@@ -692,5 +728,14 @@ function playPreview(type: "water" | "exercise" | "normal") {
 }
 .small-btn:hover {
   background: rgba(124,58,237,0.08);
+}
+.small-btn:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+.update-tip {
+  margin-top: 4px;
+  color: var(--camo-muted);
+  font-size: 0.9em;
 }
 </style>

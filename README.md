@@ -37,6 +37,34 @@
 npm install && npm start
 ```
 
+### 自动更新发布
+
+应用内「检查更新」使用 Tauri updater。发布时不仅需要 `.dmg` / `.exe` / `.deb` 等安装包，还需要 Release 里包含 `updater.json` 和各平台 updater 包的 `.sig` 签名文件。
+
+当前 GitHub Actions 会在 tag 发布完成后自动生成并上传 `updater.json`。首次启用前，需要在仓库 Settings → Secrets and variables → Actions 增加：
+
+| Secret | 说明 |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | `tauri signer generate` 生成的私钥 |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥密码，没有密码则留空 |
+
+发布流程：
+
+```bash
+./scripts/bump-version.sh 0.2.7
+git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git commit -m "chore: bump version to v0.2.7"
+git tag v0.2.7
+git push origin main
+git push origin v0.2.7
+```
+
+Release 完成后应能访问：
+
+```text
+https://github.com/Wzhgeek/Camo/releases/latest/download/updater.json
+```
+
 ---
 
 ## 功能

@@ -33,6 +33,7 @@
     "@tauri-apps/cli": "^2",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@vitejs/plugin-vue": "^5.2.1",
     "lucide-vue-next": "^1.0.0",
     "marked": "^18.0.4",

@@ -193,6 +193,11 @@ onMounted(() => {
     window.addEventListener("storage", handleReminderActionStorage);
     window.addEventListener("beforeunload", handleBeforeUnload);
     resetInactivityTimer();
+    if (isTauri) {
+      import("@tauri-apps/plugin-updater").then(({ check }) =>
+        check().then((update) => { if (update) void update.downloadAndInstall(); }).catch(() => {})
+      ).catch(() => {});
+    }
     const _st = affectionStore.state;
     const hrs = _st.lastClose ? (Date.now() - new Date(_st.lastClose).getTime()) / 3600000 : -1;
     if (hrs > 24) {
