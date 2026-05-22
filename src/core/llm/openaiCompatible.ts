@@ -67,6 +67,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let full = "";
+    let reasoningContent = "";
     const toolCallAccumulator: Map<number, { id: string; name: string; args: string }> = new Map();
     let hasToolCalls = false;
 
@@ -102,6 +103,11 @@ export class OpenAICompatibleProvider implements LLMProvider {
               }
             }
 
+            const reasoningToken = delta.reasoning_content ?? "";
+            if (reasoningToken) {
+              reasoningContent += reasoningToken;
+              callbacks.onReasoningContent?.(reasoningToken);
+            }
             const token = delta.content ?? "";
             if (token) { full += token; callbacks.onToken(token); }
           } catch {}

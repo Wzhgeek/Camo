@@ -19,6 +19,7 @@ export interface LayoutConfig {
   settings: WindowFrame;
   reminders: WindowFrame;
   notes: WindowFrame;
+  skill: WindowFrame;
 }
 
 export interface WindowFrame {
@@ -136,6 +137,7 @@ const defaultSettings: CamoSettings = {
     settings: { width: 360, height: 420 },
     reminders: { width: 340, height: 460 },
     notes: { width: 340, height: 420 },
+    skill: { width: 380, height: 500 },
   },
   appearance: {
     fontFamily: "system",
@@ -195,6 +197,7 @@ function normalizeSettings(settings: Partial<CamoSettings>): CamoSettings {
     settings: { ...defaultSettings.layout.settings, ...(incomingLayout.settings ?? {}) },
     reminders: { ...defaultSettings.layout.reminders, ...(incomingLayout.reminders ?? {}) },
     notes: { ...defaultSettings.layout.notes, ...(incomingLayout.notes ?? {}) },
+    skill: { ...defaultSettings.layout.skill, ...(incomingLayout.skill ?? {}) },
   };
   const normalizedAppearance: AppearanceConfig = {
     ...defaultSettings.appearance,

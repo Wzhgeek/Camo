@@ -15,8 +15,24 @@ export async function initDatabase(): Promise<void> {
   const saved = await loadFromIndexedDB();
   db = saved ? new SQL.Database(new Uint8Array(saved)) : new SQL.Database();
 
-  for (const sql of MIGRATIONS) {
-    db.run(sql);
+  // Ensure tracking table exists
+  db.run(`CREATE TABLE IF NOT EXISTS _migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  )`);
+
+  // Determine which migrations have been applied
+  const applied = new Set<number>();
+  try {
+    const rows = dbAll<{ version: number }>("SELECT version FROM _migrations", []);
+    for (const row of rows) applied.add(row.version);
+  } catch { /* tracking table may not exist in old DBs */ }
+
+  for (const m of MIGRATIONS) {
+    if (!applied.has(m.version)) {
+      db.run(m.sql);
+      db.run("INSERT OR IGNORE INTO _migrations (version, applied_at) VALUES (?, ?)", [m.version, new Date().toISOString()]);
+    }
   }
   persist();
 }

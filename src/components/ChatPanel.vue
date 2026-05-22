@@ -3,7 +3,9 @@ import { computed, nextTick, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { marked } from "marked";
 import { useChatStore } from "../stores/chatStore";
+import { useSkillStore } from "../stores/skillStore";
 import { isTauri } from "../core/platform";
+import { openToolWindow } from "../core/windowManager";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -12,11 +14,17 @@ const props = defineProps<{ standalone?: boolean; locked?: boolean }>();
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const chat = useChatStore();
+const skill = useSkillStore();
 const { messages, isResponding, sessions, activeSessionId } = storeToRefs(chat);
 const draft = ref("");
 const listRef = ref<HTMLElement | null>(null);
 const showSessionList = ref(false);
+const expandedToolCalls = ref<Set<string>>(new Set());
 
+function toggleToolCalls(msgId: string) {
+  const s = expandedToolCalls.value;
+  if (s.has(msgId)) s.delete(msgId); else s.add(msgId);
+}
 function newSession() {
   chat.createSession();
   showSessionList.value = false;
@@ -83,8 +91,47 @@ function scrollToBottom() {
   });
 }
 
+function allowTool(tcId: string) { chat.resolveToolConfirm(tcId, true); }
+function denyTool(tcId: string) { chat.resolveToolConfirm(tcId, false); }
+
+function toolStatusLabel(status: string): string {
+  switch (status) {
+    case "running": return "执行中...";
+    case "done": return "已完成";
+    case "error": return "出错";
+    case "awaiting_confirm": return "等待确认";
+    default: return status;
+  }
+}
+
+function formatArgs(args: Record<string, unknown>): string {
+  const simplified: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (typeof v === "string" && v.length > 200) {
+      simplified[k] = v.slice(0, 200) + "...";
+    } else {
+      simplified[k] = v;
+    }
+  }
+  return JSON.stringify(simplified, null, 2);
+}
+
+function openSkillPanel() {
+  openToolWindow("skill").catch(() => {});
+}
+
 watch(() => messages.value.length, scrollToBottom);
 watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
+watch(() => messages.value[messages.value.length - 1]?.toolCalls, (tcs) => {
+  scrollToBottom();
+  // Auto-expand tool calls that are in progress
+  if (tcs?.length) {
+    const lastMsg = messages.value[messages.value.length - 1];
+    if (lastMsg && tcs.some(tc => tc.status === "running" || tc.status === "awaiting_confirm")) {
+      expandedToolCalls.value.add(lastMsg.id);
+    }
+  }
+}, { deep: true });
 </script>
 
 <template>
@@ -97,6 +144,17 @@ watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
       @pointercancel="onHeaderPointerUp"
     >
       <p class="eyebrow">Camo</p>
+      <div class="header-middle">
+        <button
+          v-if="skill.activeSkill"
+          class="skill-indicator"
+          @click="openSkillPanel"
+          :title="`当前 Skill: ${skill.activeSkill.title}（${skill.activeSkill.tools.length} 个工具）`"
+        >
+          <span class="skill-dot"></span>
+          {{ skill.activeSkill.title }}
+        </button>
+      </div>
       <div class="header-right">
         <span class="status" :class="{ active: isResponding }">
           {{ isResponding ? "思考中" : "待机" }}
@@ -142,6 +200,32 @@ watch(() => messages.value[messages.value.length - 1]?.content, scrollToBottom);
           <summary>思考过程</summary>
           <div class="thinking-text" v-html="renderMd(message.thinking)"></div>
         </details>
+        <div v-if="message.toolCalls?.length" class="tool-calls">
+          <button class="tool-toggle" @click="toggleToolCalls(message.id)">
+            <span class="toggle-arrow">{{ expandedToolCalls.has(message.id) ? '▾' : '▸' }}</span>
+            <span>工具调用 ({{ message.toolCalls.length }})</span>
+          </button>
+          <div v-if="expandedToolCalls.has(message.id)" class="tool-cards">
+            <div
+              v-for="tc in message.toolCalls"
+              :key="tc.id"
+              class="tool-card"
+              :class="tc.status"
+            >
+              <div class="tool-header">
+                <span class="tool-icon">🔧</span>
+                <span class="tool-name">{{ tc.name }}</span>
+                <span class="tool-status">{{ toolStatusLabel(tc.status) }}</span>
+              </div>
+              <pre class="tool-args"><code>{{ formatArgs(tc.arguments) }}</code></pre>
+              <pre v-if="tc.result" class="tool-result"><code>{{ tc.result }}</code></pre>
+              <div v-if="tc.status === 'awaiting_confirm'" class="tool-confirm">
+                <button class="confirm-allow" @click="allowTool(tc.id)">允许</button>
+                <button class="confirm-deny" @click="denyTool(tc.id)">拒绝</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="msg-content" v-html="renderMd(message.content)"></div>
       </article>
     </div>

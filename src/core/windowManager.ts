@@ -12,7 +12,7 @@ import { isTauri } from "./platform";
 import type { LayoutConfig, WindowFrame } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
-export type ToolWindowKind = "chat" | "settings" | "reminders" | "notes";
+export type ToolWindowKind = "chat" | "settings" | "reminders" | "notes" | "skill";
 export type AppWindowKind = "pet" | ToolWindowKind | "reminder-alert" | "context-menu" | "update-dialog" | "sticky-note";
 type FramedWindowKind = "pet" | ToolWindowKind;
 
@@ -22,12 +22,12 @@ const REMINDER_ALERT_SIZE = { width: 300, height: 220 };
 const REMINDER_ALERT_LABELS = ["reminder-alert", "reminder-alert-1", "reminder-alert-2", "reminder-alert-3"] as const;
 type ReminderAlertLabel = typeof REMINDER_ALERT_LABELS[number];
 const REMINDER_ALERT_CASCADE_GAP = 28;
-const CONTEXT_MENU_SIZE = { width: 80, height: 190 };
+const CONTEXT_MENU_SIZE = { width: 80, height: 220 };
 const UPDATE_DIALOG_INITIAL_SIZE = { width: 360, height: 56 };
 const STICKY_NOTE_SIZE = { width: 190, height: 86 };
 const FOLLOW_GAP = 14;
 const MAX_RELATIVE_DISTANCE = 420;
-const ALL_FRAMED_WINDOW_KINDS: FramedWindowKind[] = ["pet", "chat", "settings", "reminders", "notes"];
+const ALL_FRAMED_WINDOW_KINDS: FramedWindowKind[] = ["pet", "chat", "settings", "reminders", "notes", "skill"];
 
 const TOOL_WINDOW_OPTIONS: Record<ToolWindowKind, {
   title: string;
@@ -40,12 +40,13 @@ const TOOL_WINDOW_OPTIONS: Record<ToolWindowKind, {
   settings: { title: "Camo Settings", width: 360, height: 420, minWidth: 300, minHeight: 300 },
   reminders: { title: "Camo Reminders", width: 340, height: 460, minWidth: 300, minHeight: 320 },
   notes: { title: "Camo Notes", width: 340, height: 420, minWidth: 280, minHeight: 260 },
+  skill: { title: "Camo Skills", width: 380, height: 500, minWidth: 320, minHeight: 360 },
 };
 
 function getWindowKindFromUrl(): AppWindowKind {
   const params = new URLSearchParams(window.location.search);
   const value = params.get("window");
-  if (value === "chat" || value === "settings" || value === "reminders" || value === "notes") return value;
+  if (value === "chat" || value === "settings" || value === "reminders" || value === "notes" || value === "skill") return value;
   if (value === "reminder-alert") return value;
   if (value === "context-menu") return value;
   if (value === "update-dialog") return value;

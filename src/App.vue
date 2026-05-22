@@ -7,6 +7,7 @@ import SettingsPanel from "./components/SettingsPanel.vue";
 import ReminderPanel from "./components/ReminderPanel.vue";
 import NotesPanel from "./components/NotesPanel.vue";
 import StickyNoteWindow from "./components/StickyNoteWindow.vue";
+import SkillPanel from "./components/SkillPanel.vue";
 import ReminderBubble from "./components/ReminderBubble.vue";
 import { useCamoStore } from "./stores/camoStore";
 import { useChatStore } from "./stores/chatStore";
@@ -565,6 +566,12 @@ function openReminders() {
 function openNotes() {
   void openToolWindow("notes").finally(closeContextMenu);
 }
+function openSkills() {
+  void openToolWindow("skill").finally(closeContextMenu);
+}
+function closeSkillPanel() {
+  closeCurrentWindow();
+}
 
 function startFocusMode() {
   if (!isPetWindow.value) {
@@ -709,6 +716,7 @@ function handleWheel(e: WheelEvent) {
       :style="isContextMenuWindow ? undefined : { left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
+      <button class="context-item" @click="openSkills">技能</button>
       <button class="context-item" @click="openSettings">设置</button>
       <button class="context-item" @click="openReminders">提醒</button>
       <button class="context-item" @click="openNotes">便签</button>
@@ -758,6 +766,12 @@ function handleWheel(e: WheelEvent) {
       standalone
       :locked="currentBehavior.locked"
       @close="closeCurrentWindow"
+    />
+    <SkillPanel
+      v-if="currentWindowKind === 'skill'"
+      standalone
+      :locked="currentBehavior.locked"
+      @close="closeSkillPanel"
     />
     <StickyNoteWindow v-if="currentWindowKind === 'sticky-note'" />
     <ReminderBubble v-if="currentWindowKind === 'pet' || currentWindowKind === 'reminder-alert'" />
@@ -929,6 +943,59 @@ html[data-camo-status-preset="warm"] .state-dot[data-state="done"] { background:
   line-height: 1;
 }
 .status.active { color: #315ea8; background: rgba(59,130,246,0.12); }
+
+/* Skill indicator */
+.header-middle { flex: 1; display: flex; align-items: center; padding: 0 8px; }
+.skill-indicator {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(59,130,246,0.08); color: #2563eb;
+  font-size: 11px; font-weight: 600; cursor: pointer; border: none;
+  transition: background 0.15s;
+}
+.skill-indicator:hover { background: rgba(59,130,246,0.15); }
+.skill-dot { width: 6px; height: 6px; border-radius: 50%; background: #2563eb; }
+
+/* Tool call cards */
+.tool-calls { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.tool-toggle {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(59,130,246,0.15);
+  background: rgba(59,130,246,0.05); color: #2563eb;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s;
+}
+.tool-toggle:hover { background: rgba(59,130,246,0.12); }
+.toggle-arrow { font-size: 10px; width: 12px; text-align: center; }
+.tool-cards { display: flex; flex-direction: column; gap: 6px; }
+.tool-card {
+  border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;
+  background: rgba(59,130,246,0.04); padding: 10px; font-size: 12px;
+}
+.tool-card.awaiting_confirm {
+  border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06);
+}
+.tool-card.error { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.04); }
+.tool-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tool-icon { font-size: 14px; }
+.tool-name { font-weight: 600; color: #2563eb; font-family: monospace; }
+.tool-status { margin-left: auto; font-size: 11px; color: #6b7280; }
+.tool-card.done .tool-status { color: #059669; }
+.tool-card.error .tool-status { color: #dc2626; }
+.tool-card.awaiting_confirm .tool-status { color: #d97706; }
+.tool-args, .tool-result { margin: 4px 0; padding: 6px 8px; border-radius: 4px; background: rgba(0,0,0,0.03); overflow-x: auto; }
+.tool-args code, .tool-result code { font-size: 11px; color: #4a3d5c; white-space: pre-wrap; word-break: break-all; }
+.tool-result { background: rgba(5,150,105,0.06); }
+.tool-card.error .tool-result { background: rgba(239,68,68,0.04); }
+.tool-confirm { display: flex; gap: 6px; margin-top: 8px; }
+.confirm-allow, .confirm-deny {
+  padding: 4px 14px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.confirm-allow { background: #059669; color: #fff; }
+.confirm-allow:hover { background: #047857; }
+.confirm-deny { background: rgba(0,0,0,0.08); color: #666; }
+.confirm-deny:hover { background: rgba(0,0,0,0.14); }
+
 .session-bar {
   display: flex;
   align-items: center;
