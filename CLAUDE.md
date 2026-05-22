@@ -34,15 +34,20 @@ git push origin v0.2.10
 
 ### 构建签名
 
-构建需要使用签名私钥：
+**默认通过 GitHub Actions 构建**，推送 tag 后自动触发 `.github/workflows/release.yml`：
 
 ```bash
-TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/camo.key npx tauri build
+# 本地只需打 tag 推送，GitHub Actions 自动构建 4 平台 + 签名
+git tag v0.2.10
+git push origin v0.2.10
 ```
 
-如果设置了密码保护，需要额外传入：
+构建进度：https://github.com/Wzhgeek/Camo/actions
+
+仅在用户明确要求时才本地构建：
+
 ```bash
-TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/camo.key TAURI_SIGNING_PRIVATE_KEY_PASSWORD=密码 npx tauri build
+TAURI_SIGNING_PRIVATE_KEY=$(cat ~/.tauri/camo.key) TAURI_SIGNING_PRIVATE_KEY_PASSWORD=密码 npx tauri build
 ```
 
 构建产物在 `src-tauri/target/release/bundle/` 目录。
