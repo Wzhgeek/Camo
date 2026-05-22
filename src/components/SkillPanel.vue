@@ -11,7 +11,7 @@ import { isTauri } from "../core/platform";
 const tauriWindow = isTauri ? import("@tauri-apps/api/window") : null;
 
 const emit = defineEmits<{ close: [] }>();
-const props = defineProps<{ standalone?: boolean; locked?: boolean }>();
+defineProps<{ standalone?: boolean; locked?: boolean }>();
 
 const skillStore = useSkillStore();
 
