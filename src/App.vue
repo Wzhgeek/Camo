@@ -737,7 +737,7 @@ function handleWheel(e: WheelEvent) {
         </div>
       </div>
       <div v-else-if="updateData.status === 'installed'" class="update-body">
-        <span class="update-msg">更新完成，请重启应用体验最新版本</span>
+        <span class="update-msg" style="white-space: normal; text-align: center; line-height: 1.4;">更新完成<br>重启体验新版</span>
         <div class="update-actions">
           <button class="update-btn primary" @click="exitApp">重启</button>
         </div>
