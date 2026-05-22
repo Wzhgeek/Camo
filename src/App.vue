@@ -637,9 +637,7 @@ async function doUpdate() {
     const update = await check();
     if (update) {
       await update.downloadAndInstall();
-      publishToast("更新已安装，重启应用后生效。", 5000);
       await publishUpdateDialogData({ status: "installed", message: "更新已安装，重启应用后生效。" });
-      await closeCurrentWindow();
     } else {
       await publishUpdateDialogData({ status: "latest", message: "当前已是最新版本。" });
     }
@@ -736,6 +734,12 @@ function handleWheel(e: WheelEvent) {
         <div class="update-actions">
           <button class="update-btn primary" @click="doUpdate">下载</button>
           <button class="update-btn" @click="closeUpdateDialog">取消</button>
+        </div>
+      </div>
+      <div v-else-if="updateData.status === 'installed'" class="update-body">
+        <span class="update-msg">更新完成，请重启应用体验最新版本</span>
+        <div class="update-actions">
+          <button class="update-btn primary" @click="exitApp">重启</button>
         </div>
       </div>
       <div v-else class="update-body">
