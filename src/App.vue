@@ -14,6 +14,7 @@ import { useReminderStore } from "./stores/reminderStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useAffectionStore } from "./stores/affectionStore";
 import { ReminderScheduler } from "./core/reminder/scheduler";
+import { reminderService } from "./core/reminder/reminderService";
 import { isTauri } from "./core/platform";
 import {
   applyCurrentWindowPreferences,
@@ -157,6 +158,15 @@ function handleReminderAction(payload: { action?: string; reminderId?: string; r
     camo.returnToIdle(2500);
     skipCounts[payload.reminderType ?? ""] = 0;
     affectionStore.adjust("reminder_done", 3);
+    // 一次性提醒完成后自动禁用
+    if (payload.reminderId && payload.reminderId !== "__water__") {
+      const r = reminderStore.reminders.find((r) => r.id === payload.reminderId);
+      if (r && r.scheduleKind === "once") {
+        reminderService.update(payload.reminderId, { enabled: false });
+        reminderStore.refreshReminders();
+        scheduler.resetReminder(payload.reminderId);
+      }
+    }
   } else if (action === "skip") {
     affectionStore.logEvent("reminder_skip", 0);
     const t = payload.reminderType ?? "normal";
@@ -188,10 +198,20 @@ function handleStorageEvent(e: StorageEvent) {
       }
     } else if (e.key === "camo:command") {
       const data = JSON.parse(e.newValue);
-      if (data.cmd === "open-settings") void openToolWindow("settings");
-      if (data.cmd === "toggle-focus") {
+      if (data.cmd === "open-settings") { void openToolWindow("settings"); }
+      else if (data.cmd === "toggle-focus") {
         if (isFocusing.value) stopFocusMode();
         else startFocusMode();
+      }
+      else if (data.cmd === "start-focus" && !isFocusing.value) {
+        if (data.duration) settingsStore.settings.focusDuration = Number(data.duration) || 25;
+        startFocusMode();
+      }
+      else if (data.cmd === "create-note" && data.note) {
+        const existingIdx = settingsStore.settings.stickyNotes.findIndex((n) => n.id === data.note.id);
+        if (existingIdx === -1) settingsStore.settings.stickyNotes.push(data.note);
+        const idx = existingIdx === -1 ? settingsStore.settings.stickyNotes.length - 1 : existingIdx;
+        if (isTauri) void openStickyNoteWindow(data.note.id, idx);
       }
     }
   } catch {}
@@ -589,11 +609,16 @@ function formatFocusTime(sec: number): string {
 async function exitApp() {
   closeContextMenu();
   try {
-    const { getAllWindows } = await import("@tauri-apps/api/window");
-    const windows = await getAllWindows();
-    await Promise.all(windows.map((win) => win.close().catch(() => {})));
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("exit_app");
   } catch {
-    window.close();
+    try {
+      const { getAllWindows } = await import("@tauri-apps/api/window");
+      const windows = await getAllWindows();
+      await Promise.all(windows.map((win) => win.close().catch(() => {})));
+    } catch {
+      window.close();
+    }
   }
 }
 

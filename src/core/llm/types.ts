@@ -34,14 +34,33 @@ export interface LLMConfig {
   model: string;
 }
 
+export interface Tool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void;
   onThinking?: (token: string) => void;
+  onToolCalls?: (toolCalls: ToolCall[]) => void;
 }
 
 export interface LLMProvider {
-  chat(messages: ChatMessage[]): Promise<string>;
-  chatStream(messages: ChatMessage[], callbacks: StreamCallbacks, signal?: AbortSignal): Promise<string>;
+  chat(messages: ChatMessage[], tools?: Tool[]): Promise<string>;
+  chatStream(messages: ChatMessage[], callbacks: StreamCallbacks, signal?: AbortSignal, tools?: Tool[]): Promise<string>;
 }
 
 export const defaultLLMConfig: LLMConfig = {

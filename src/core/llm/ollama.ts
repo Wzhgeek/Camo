@@ -1,4 +1,4 @@
-import type { ChatMessage, LLMProvider, StreamCallbacks } from "./types";
+import type { ChatMessage, LLMProvider, StreamCallbacks, Tool } from "./types";
 
 export class OllamaProvider implements LLMProvider {
   constructor(
@@ -6,7 +6,7 @@ export class OllamaProvider implements LLMProvider {
     private readonly model: string,
   ) {}
 
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[], _tools?: Tool[]): Promise<string> {
     const url = `${this.baseUrl.replace(/\/$/, "")}/api/chat`;
     const response = await fetch(url, {
       method: "POST",
@@ -21,7 +21,7 @@ export class OllamaProvider implements LLMProvider {
     return data.message?.content ?? "";
   }
 
-  async chatStream(messages: ChatMessage[], callbacks: StreamCallbacks, signal?: AbortSignal): Promise<string> {
+  async chatStream(messages: ChatMessage[], callbacks: StreamCallbacks, signal?: AbortSignal, _tools?: Tool[]): Promise<string> {
     const url = `${this.baseUrl.replace(/\/$/, "")}/api/chat`;
     const response = await fetch(url, {
       method: "POST",
