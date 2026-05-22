@@ -1,5 +1,12 @@
 # Camo 工作方法
 
+## 分支说明
+
+- **main** — 稳定版本，桌宠基础功能（提醒、便签、对话、好感度）
+- **camoclaw** — 开发分支，新增 tool calling / Skill 系统，让 LLM 可操作电脑
+
+`camoclaw` 分支的开发计划详见 `specs/camo-claw-plan.md`。
+
 ## 版本升级与构建
 
 ### 版本号同步
@@ -108,3 +115,27 @@ src-tauri/
 2. 代码提交前需通过 `npx tsc --noEmit`
 3. 所有新功能先在 plan 模式讨论方案再实现
 4. 使用中文回复用户
+
+## Camo-Claw 开发约定（camoclaw 分支）
+
+### 开发阶段
+
+按 `specs/camo-claw-plan.md` 中 6 个阶段顺序推进，每阶段完成后需验证再进入下一阶段。
+
+### 架构原则
+
+- Skill 存 SQLite（数据驱动，非代码），LLM 可通过内置工具自行创建
+- 工具按风险分级：安全工具（read_file）直接执行，危险工具（run_shell）需用户在 ChatPanel 确认
+- 流式 tool_calls 解析需分别适配 OpenAI 兼容接口和 Ollama
+
+### 新增模块约定
+
+- `src/core/tools/` — 工具注册中心 + 工具定义，每个工具一个文件
+- `src/core/skill/` — Skill CRUD 服务 + 匹配器
+- `src/core/agent/` — AgentLoop 核心 + 权限控制
+
+### 不改动的模块
+
+- 桌宠状态机、提醒系统、外观系统、便签系统保持不动
+- `windowManager.ts` 仅新增 `skill` 窗口类型，其余不变
+- 数据库基础设施只加 migration，不重构
