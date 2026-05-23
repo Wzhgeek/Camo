@@ -25,7 +25,23 @@ type CommandHandler = (args: string[], ctx: CommandContext) => Promise<void> | v
 const commands = new Map<string, CommandHandler>();
 
 function register(cmd: string, handler: CommandHandler) { commands.set(cmd, handler); }
+export { getCommands as getCommandNames };
 export function getCommands(): string[] { return [...commands.keys()]; }
+
+// Recent commands LRU
+const recentCommands: string[] = [];
+const MAX_RECENT = 10;
+
+export function recordCommand(cmd: string) {
+  const idx = recentCommands.indexOf(cmd);
+  if (idx >= 0) recentCommands.splice(idx, 1);
+  recentCommands.unshift(cmd);
+  if (recentCommands.length > MAX_RECENT) recentCommands.pop();
+}
+
+export function getRecentCommands(): string[] {
+  return [...recentCommands];
+}
 
 // ── Help ──
 register("help", (_, ctx) => {
@@ -251,6 +267,7 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
   const handler = commands.get(cmd);
   if (handler) {
     await handler(args, ctx);
+    recordCommand(cmd);
   } else {
     ctx.print(warn(`未知命令: /${cmd}。输入 /help 查看帮助。`));
   }

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { exec } from "node:child_process";
-import { AppState } from "./status.js";
+import { AppState, type AppMode } from "./status.js";
 import { History } from "./history.js";
 import { sessionManager } from "./sessions.js";
 import type { CamoConfig } from "./config.js";
@@ -14,6 +14,8 @@ import {
   ellipsize,
   error,
   formatEvent,
+  getContextWindow,
+  progressBar,
   statusLine,
   stripAnsi,
   stripTags,
@@ -22,7 +24,7 @@ import {
   type ComposerState,
   type ConversationEvent,
 } from "./renderer.js";
-import { handleCommand, type CommandContext, getCustomSystemPrompt } from "./commands.js";
+import { handleCommand, type CommandContext, getCustomSystemPrompt, getCommandNames, getRecentCommands } from "./commands.js";
 import { setSkillDB, skillService } from "../skill/skillService.js";
 import { setCamoclawFS, syncSkillsFromDisk } from "../skill/fsSync.js";
 import { matchSkill } from "../skill/matcher.js";
@@ -39,6 +41,11 @@ const SKILLS_DIR = join(homedir(), ".camoclaw", "skills");
 const TRUSTED_WORKSPACES_PATH = join(homedir(), ".camoclaw", "trusted-workspaces.json");
 const COMPOSER_HEIGHT = 5;
 const PLACEHOLDER = 'Try "edit <filepath> to..."';
+const EXIT_COMMANDS = ["exit", "/exit", "quit", "/quit"];
+const CHAT_MODES: AppMode[] = ["chat", "plan"];
+const AGENT_MODES: AppMode[] = ["agent", "ask"];
+const MODE_ORDER: AppMode[] = ["plan", "agent", "ask"];
+const MIN_RENDER_MS = 50;
 
 interface TuiRuntime {
   screen: Widgets.Screen;
@@ -58,6 +65,60 @@ interface TuiRuntime {
   scrollLocked: boolean;
   ctrlCPressed: boolean;
   renderQueued: boolean;
+  toolCallsExpanded: boolean;
+}
+
+type ConfirmResult = "once" | "always" | "deny";
+
+/** Shared popup selector: arrow keys to pick, enter to confirm, esc to cancel */
+function selectPopup<T>(
+  runtime: TuiRuntime,
+  items: T[],
+  opts: {
+    bottom?: number; left?: number; right?: number; height?: number;
+    borderFg?: string;
+    render: (item: T, selected: boolean) => string;
+    onSelect: (item: T) => void;
+    onCancel: () => void;
+  },
+) {
+  let selected = 0;
+  const N = items.length;
+  const popup = blessed.box({
+    parent: runtime.screen,
+    bottom: opts.bottom ?? COMPOSER_HEIGHT + 1,
+    left: opts.left ?? 2,
+    right: opts.right ?? 2,
+    height: opts.height ?? N + 2,
+    border: "line",
+    style: { border: { fg: opts.borderFg ?? "yellow" }, fg: "white" },
+    tags: true,
+  } as Widgets.BoxOptions);
+
+  function draw() {
+    popup.setContent(items.map((item, i) => opts.render(item, i === selected)).join("\n"));
+    runtime.screen.render();
+  }
+
+  const handlers = new Map<string, (...args: any[]) => void>();
+  function bind(key: string | string[], fn: (...args: any[]) => void) {
+    const keys = Array.isArray(key) ? key : [key];
+    handlers.set(keys[0], fn);
+    runtime.input.key(keys, fn);
+  }
+
+  bind(["up"], () => { selected = selected > 0 ? selected - 1 : N - 1; draw(); });
+  bind(["down"], () => { selected = selected < N - 1 ? selected + 1 : 0; draw(); });
+  bind(["enter"], () => { cleanup(); opts.onSelect(items[selected]); });
+  bind(["escape"], () => { cleanup(); opts.onCancel(); });
+
+  function cleanup() {
+    runtime.screen.remove(popup);
+    for (const [key, fn] of handlers) runtime.input.unkey(key, fn);
+  }
+
+  draw();
+  runtime.input.focus();
 }
 
 export async function runTUI(initialConfig: CamoConfig) {
@@ -140,7 +201,7 @@ function createRuntime(state: AppState, history: History, permissions: Permissio
     left: 0,
     right: 0,
     bottom: COMPOSER_HEIGHT,
-    tags: false,
+    tags: true,
     scrollable: true,
     alwaysScroll: true,
     mouse: true,
@@ -194,7 +255,7 @@ function createRuntime(state: AppState, history: History, permissions: Permissio
     left: 1,
     right: 1,
     height: 1,
-    tags: false,
+    tags: true,
     style: { fg: "white" },
   } as Widgets.BoxOptions);
 
@@ -216,6 +277,7 @@ function createRuntime(state: AppState, history: History, permissions: Permissio
     scrollLocked: false,
     ctrlCPressed: false,
     renderQueued: false,
+    toolCallsExpanded: false,
   };
 }
 
@@ -233,7 +295,26 @@ function bindInput(runtime: TuiRuntime, ctx: CommandContext) {
   });
 }
 
-function bindKeys(runtime: TuiRuntime, ctx: CommandContext) {
+function showToolConfirm(runtime: TuiRuntime, toolName: string): Promise<ConfirmResult> {
+  const prefix = toolName.split(" ")[0];
+  const options: ConfirmResult[] = ["once", "always", "deny"];
+  const labels: Record<ConfirmResult, string> = {
+    once: "Yes — 仅本次允许",
+    always: `Yes, always for "${prefix}*" — 该前缀的命令之后都允许`,
+    deny: "No — 拒绝并退出本次回答",
+  };
+  return new Promise((resolve) => {
+    selectPopup(runtime, options, {
+      height: 5,
+      borderFg: "yellow",
+      render: (v, sel) => (sel ? "> " : "  ") + labels[v],
+      onSelect: (v) => resolve(v),
+      onCancel: () => resolve("deny"),
+    });
+  });
+}
+
+function bindKeys(runtime: TuiRuntime, _ctx?: CommandContext) {
   runtime.screen.key(["C-c"], () => handleCtrlC(runtime));
   runtime.input.key(["C-c"], () => handleCtrlC(runtime));
   runtime.screen.program.key(["C-c"], () => handleCtrlC(runtime));
@@ -271,7 +352,79 @@ function bindKeys(runtime: TuiRuntime, ctx: CommandContext) {
     runtime.input.focus();
   });
 
-  void ctx;
+  function cycleMode() {
+    const idx = MODE_ORDER.indexOf(runtime.state.mode);
+    const next = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
+    runtime.state.setMode(next);
+    appendSystem(runtime, `已切换到 ${next} 模式`);
+    queueRender(runtime);
+  }
+  runtime.screen.key(["S-tab", "backtab"], cycleMode);
+  runtime.screen.program.key(["S-tab", "backtab"], cycleMode);
+
+  // Ctrl+O: toggle tool call expansion
+  runtime.screen.key(["C-o"], () => {
+    runtime.toolCallsExpanded = !runtime.toolCallsExpanded;
+    appendSystem(runtime, runtime.toolCallsExpanded ? "已展开全部工具调用" : "已折叠工具调用");
+    queueRender(runtime);
+  });
+
+  let lastEscTime = 0;
+  runtime.screen.key(["escape"], () => {
+    const now = Date.now();
+    // Busy state: cancel LLM request
+    if (runtime.state.status === "thinking") {
+      if (runtime.currentAbort) { runtime.currentAbort.abort(); }
+      runtime.state.setStatus("idle");
+      runtime.composerState = "input";
+      appendSystem(runtime, "已取消当前请求");
+      queueRender(runtime);
+      return;
+    }
+    // Input state: clear input on Esc
+    const val = runtime.input.getValue();
+    if (val) {
+      runtime.input.clearValue();
+      if (now - lastEscTime < 300) {
+        // Double Esc: also clear any pending state
+        runtime.composerState = "input";
+      }
+    }
+    lastEscTime = now;
+    queueRender(runtime);
+  });
+
+  // ── Command autocomplete dropdown ──
+
+  function showCmdPopup(matches: string[]) {
+    if (!matches.length) return;
+    selectPopup(runtime, matches, {
+      bottom: 7,
+      height: Math.min(matches.length, 5) + 1,
+      borderFg: "magenta",
+      render: (m, sel) => sel ? `{green-fg}>{/green-fg} ${m}` : `  ${m}`,
+      onSelect: (m) => {
+        runtime.input.setValue("/" + m + " ");
+        queueRender(runtime);
+      },
+      onCancel: () => queueRender(runtime),
+    });
+  }
+
+  (runtime.screen.program as any).on("keypress", () => {
+    setImmediate(() => {
+      const val = runtime.input.getValue();
+      if (!val.startsWith("/")) return;
+      const partial = val.slice(1);
+      const allNames = getCommandNames();
+      const recents = getRecentCommands();
+      const matches = (partial ? allNames : recents).filter(c => c.startsWith(partial));
+      if (matches.length && matches.length < allNames.length) {
+        showCmdPopup(matches);
+      }
+    });
+  });
+
 }
 
 function handleCtrlC(runtime: TuiRuntime) {
@@ -307,41 +460,87 @@ function closeRuntime(runtime: TuiRuntime, code: number) {
   process.exit(code);
 }
 
+/** Collapse consecutive tool calls if > 2, unless expanded */
+function collapseToolCalls(events: ConversationEvent[], expanded: boolean): ConversationEvent[] {
+  if (expanded) return events;
+  const result: ConversationEvent[] = [];
+  let toolGroup: ConversationEvent[] = [];
+  let toolTokens = 0;
+
+  function flushGroup() {
+    if (toolGroup.length === 0) return;
+    const tools = toolGroup.filter(e => e.type === "tool-start");
+    const results = toolGroup.filter(e => e.type === "tool-result");
+    if (tools.length > 2) {
+      // Show first tool + summary
+      result.push(tools[0]);
+      result.push({
+        type: "system",
+        content: `⎿ ${tools.length} tool calls · ${toolTokens} tokens · Ctrl+O to expand`,
+      });
+    } else {
+      for (const e of toolGroup) result.push(e);
+    }
+    toolGroup = [];
+    toolTokens = 0;
+  }
+
+  for (const e of events) {
+    if (e.type === "tool-start" || e.type === "tool-result") {
+      toolGroup.push(e);
+      toolTokens += Math.ceil(e.content.length / 3.5);
+    } else {
+      flushGroup();
+      result.push(e);
+    }
+  }
+  flushGroup();
+  return result;
+}
+
 function render(runtime: TuiRuntime) {
-  const content = runtime.events.map(formatEvent).join("\n\n");
+  const toRender = collapseToolCalls(runtime.events, runtime.toolCallsExpanded);
+  const content = toRender.map(formatEvent).join("\n\n");
   runtime.conversation.setContent(content);
   runtime.hint.setContent(runtime.composerState === "confirming"
     ? confirmHint(runtime.confirmMessage || "Y/Enter 允许 · N/Esc 拒绝")
     : composerHint(runtime.composerState, PLACEHOLDER));
   runtime.meta.setContent(metaLine(runtime));
-  if (!runtime.scrollLocked) runtime.conversation.setScrollPerc(100);
   runtime.screen.render();
-}
-
-function queueRender(runtime: TuiRuntime) {
-  if (runtime.renderQueued) return;
-  runtime.renderQueued = true;
-  setImmediate(() => {
-    runtime.renderQueued = false;
-    render(runtime);
-  });
-}
-
-function metaLine(runtime: TuiRuntime): string {
-  const width = Math.max(40, runtime.screen.cols || process.stdout.columns || 80);
-  const model = runtime.state.model || "?";
-  const skill = runtime.state.activeSkill || "通用助手";
-  const left = `Context: ~${runtime.history.getTokenEstimate()} tokens`;
-  const right = `${model} · ${skill} · ${runtime.state.mode}`;
-  if (width < 72) return statusLine(model, "", runtime.state.mode, runtime.history.getTokenEstimate(), runtime.state.status);
-  return `${left}${" ".repeat(Math.max(1, width - displayWidth(left) - displayWidth(right) - 4))}${right}`;
+  // Scroll after render so content layout is settled
+  if (!runtime.scrollLocked) runtime.conversation.setScrollPerc(100);
 }
 
 function appendEvent(runtime: TuiRuntime, event: ConversationEvent) {
   runtime.events.push(event);
   if (runtime.events.length > 500) runtime.events.splice(0, runtime.events.length - 500);
-  if (event.type === "user") runtime.scrollLocked = false;
+  if (event.type !== "assistant") runtime.scrollLocked = false;
   queueRender(runtime);
+}
+
+let lastRenderTime = 0;
+function queueRender(runtime: TuiRuntime) {
+  if (runtime.renderQueued) return;
+  const elapsed = Date.now() - lastRenderTime;
+  if (elapsed < MIN_RENDER_MS) {
+    // Throttle: schedule after remaining interval
+    runtime.renderQueued = true;
+    setTimeout(() => { runtime.renderQueued = false; render(runtime); lastRenderTime = Date.now(); }, MIN_RENDER_MS - elapsed);
+    return;
+  }
+  runtime.renderQueued = true;
+  setImmediate(() => {
+    runtime.renderQueued = false;
+    lastRenderTime = Date.now();
+    render(runtime);
+  });
+}
+
+function metaLine(runtime: TuiRuntime): string {
+  const s = runtime.state;
+  const tokens = runtime.history.getTokenEstimate();
+  const maxTokens = getContextWindow(s.model);
+  return `${progressBar(tokens, maxTokens)}  ${s.model}  ·  ${s.activeSkill || "通用助手"}  ·  ${s.mode}  ·  ~${tokens} tokens`;
 }
 
 function appendSystem(runtime: TuiRuntime, content: string) {
@@ -397,7 +596,7 @@ async function handleLine(runtime: TuiRuntime, ctx: CommandContext, line: string
 
   runtime.ctrlCPressed = false;
 
-  if (["/exit", "/quit"].includes(trimmed)) closeRuntime(runtime, 0);
+  if (EXIT_COMMANDS.includes(trimmed)) { closeRuntime(runtime, 0); return; }
 
   if (trimmed.startsWith("/")) {
     await handleCommand(trimmed, ctx);
@@ -409,7 +608,7 @@ async function handleLine(runtime: TuiRuntime, ctx: CommandContext, line: string
   appendEvent(runtime, { type: "user", content: trimmed });
 
   if (runtime.state.mode === "shell") {
-    if (["exit", "/exit", "quit"].includes(trimmed)) closeRuntime(runtime, 0);
+    if (EXIT_COMMANDS.includes(trimmed)) { closeRuntime(runtime, 0); return; }
     appendSystem(runtime, await shellExec(trimmed));
     runtime.input.focus();
     return;
@@ -428,8 +627,14 @@ async function handleLine(runtime: TuiRuntime, ctx: CommandContext, line: string
     return;
   }
 
-  if (runtime.state.mode === "chat") await runChat(runtime, provider, trimmed, ctx);
-  else await runAgent(runtime, provider, trimmed, ctx, runtime.permissions);
+  if (CHAT_MODES.includes(runtime.state.mode)) {
+    await runChat(provider, trimmed, ctx, runtime);
+  } else {
+    const perms = runtime.state.mode === "ask"
+      ? new PermissionManager("strict")
+      : runtime.permissions;
+    await runAgent(provider, trimmed, ctx, perms, runtime);
+  }
 
   runtime.input.focus();
 }
@@ -439,7 +644,7 @@ function baseSystemPrompt(custom?: string): string {
   return (custom || "你是 Camo，一个有用的 AI 助手。") + "\n" + NO_MD;
 }
 
-async function runChat(runtime: TuiRuntime, provider: LLMProvider, input: string, ctx: CommandContext) {
+async function runChat(provider: LLMProvider, input: string, ctx: CommandContext, runtime: TuiRuntime) {
   ctx.history.push({ role: "user", content: input });
   runtime.state.setStatus("thinking");
   runtime.composerState = "busy";
@@ -473,7 +678,7 @@ async function runChat(runtime: TuiRuntime, provider: LLMProvider, input: string
   }
 }
 
-async function runAgent(runtime: TuiRuntime, provider: LLMProvider, input: string, ctx: CommandContext, permissions: PermissionManager) {
+async function runAgent(provider: LLMProvider, input: string, ctx: CommandContext, permissions: PermissionManager, runtime: TuiRuntime) {
   const history = ctx.history;
   const skills = skillService.list();
   const matched = matchSkill(input, skills);
@@ -483,7 +688,7 @@ async function runAgent(runtime: TuiRuntime, provider: LLMProvider, input: strin
   runtime.state.setStatus("thinking");
   runtime.composerState = "busy";
   runtime.currentAbort = new AbortController();
-  const assistantEvent: ConversationEvent = { type: "assistant", content: "" };
+  let assistantEvent: ConversationEvent = { type: "assistant", content: "" };
   appendEvent(runtime, { type: "thinking", content: `Camo is thinking (${ctx.state.model} · ${skill?.title ?? "通用助手"})...` });
   appendEvent(runtime, assistantEvent);
 
@@ -493,11 +698,14 @@ async function runAgent(runtime: TuiRuntime, provider: LLMProvider, input: strin
       queueRender(runtime);
     },
     onToolCallStart: (tc) => {
+      // Split assistant event: pre-tool text stays above, tool card in middle, new event for post-tool
       appendEvent(runtime, {
         type: "tool-start",
         title: tc.function.name,
         content: ellipsize(tc.function.arguments || "{}", 100),
       });
+      assistantEvent = { type: "assistant", content: "" };
+      appendEvent(runtime, assistantEvent);
     },
     onToolCallResult: (_tc, result) => {
       appendEvent(runtime, { type: "tool-result", content: result });
@@ -507,7 +715,12 @@ async function runAgent(runtime: TuiRuntime, provider: LLMProvider, input: strin
         type: "system",
         content: `工具 ${name} 请求执行：${ellipsize(JSON.stringify(args), 120)}`,
       });
-      return requestConfirm(runtime, "Y/Enter 允许工具执行 · N/Esc 拒绝");
+      const result = await showToolConfirm(runtime, name);
+      if (result === "deny") return false;
+      if (result === "always") {
+        runtime.permissions.addRule(name.split(" ")[0] + "*", "allow");
+      }
+      return true;
     },
   };
 

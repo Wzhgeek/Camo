@@ -123,12 +123,93 @@ export function confirmHint(message: string): string {
   return `⚠ ${message}`;
 }
 
+/** Render Markdown table to aligned text */
+function renderTable(lines: string[]): string {
+  const rows = lines.map(l => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim()));
+  const cols = rows[0].length;
+  const widths = new Array(cols).fill(3);
+  for (const row of rows) {
+    for (let i = 0; i < cols; i++) {
+      widths[i] = Math.max(widths[i], stripTags(row[i] || "").length);
+    }
+  }
+  const out: string[] = [];
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].map((c, i) => (c || "").padEnd(widths[i]));
+    const line = "│ " + cells.join(" │ ") + " │";
+    if (r === 0) {
+      out.push(`{bold}${line}{/bold}`);
+      out.push("{#555-fg}" + "├" + widths.map(w => "─".repeat(w + 2)).join("┼") + "┤{/#555-fg}");
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join("\n");
+}
+
+/** Escape raw blessed tags to prevent injection */
+function escapeTags(text: string): string {
+  return text.replace(/\{/g, "\\{");
+}
+
+/** Convert Markdown to blessed tags (safe: escapes injection first) */
+function renderMd(text: string): string {
+  text = escapeTags(text);
+
+  // Render tables via line-by-line state machine
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let tableBuf: string[] = [];
+  let inTable = false;
+
+  function flushTable() {
+    if (tableBuf.length < 2) { for (const l of tableBuf) out.push(l); tableBuf = []; inTable = false; return; }
+    const dataRows = tableBuf.filter(l => l.includes("|") && !/^\|[\s\-:|]+\|$/.test(l));
+    if (dataRows.length > 0) out.push(renderTable(dataRows));
+    else for (const l of tableBuf) out.push(l);
+    tableBuf = [];
+    inTable = false;
+  }
+
+  for (const line of lines) {
+    const isTableLine = line.trim().startsWith("|") && line.trim().endsWith("|");
+    if (isTableLine) {
+      tableBuf.push(line);
+      inTable = true;
+    } else {
+      if (inTable) flushTable();
+      out.push(line);
+    }
+  }
+  if (inTable) flushTable();
+  text = out.join("\n");
+
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "{bold}$1{/bold}")
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, "{underline}$1{/underline}")
+    .replace(/^### (.+)$/gm, "{bold}$1{/bold}")
+    .replace(/^## (.+)$/gm, "{bold}$1{/bold}")
+    .replace(/^# (.+)$/gm, "{bold}$1{/bold}")
+    .replace(/`([^`\n]+)`/g, "{inverse}$1{/inverse}")
+    .replace(/^\- (.+)$/gm, "  · $1")
+    .replace(/^\d+\. (.+)$/gm, "  $&");
+}
+
+/** Model context window sizes */
+export function getContextWindow(model: string): number {
+  if (model.includes("claude")) return 200000;
+  if (model.includes("gemini")) return 1000000;
+  if (model.includes("gpt-4")) return 128000;
+  if (model.includes("deepseek")) return 128000;
+  return 128000; // default
+}
+
 export function formatEvent(event: ConversationEvent): string {
   switch (event.type) {
     case "user":
-      return `${userPrefix()}${event.content}`;
+      return `{magenta-fg}▸{/magenta-fg} ${event.content}\n  {magenta-fg}${"─".repeat(32)}{/magenta-fg}`;
     case "assistant":
-      return `${botPrefix()}${event.content}`;
+      return `${botPrefix()}${renderMd(event.content)}`;
     case "thinking":
       return `${botPrefix()}${event.content}`;
     case "tool-start":
@@ -147,3 +228,13 @@ export function info(msg: string): string { return msg; }
 export function success(msg: string): string { return `✓ ${msg}`; }
 export function warn(msg: string): string { return `⚠ ${msg}`; }
 export function error(msg: string): string { return `✗ ${msg}`; }
+
+// 上下文进度条
+export function progressBar(used: number, max: number): string {
+  const pct = Math.min(100, Math.round((used / max) * 100));
+  const w = 8;
+  const filled = Math.round((pct / 100) * w);
+  const bar = "█".repeat(filled) + "░".repeat(w - filled);
+  const color = pct < 50 ? "magenta" : pct < 80 ? "yellow" : "red";
+  return `{${color}-fg}[${bar} ${pct}%]{/${color}-fg}`;
+}
