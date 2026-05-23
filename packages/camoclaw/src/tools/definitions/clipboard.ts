@@ -1,4 +1,4 @@
-import { toolRegistry } from "../registry";
+import { toolRegistry } from "../registry.js";
 
 function registerClipboardTools(): void {
   toolRegistry.register({

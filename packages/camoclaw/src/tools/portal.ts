@@ -1,4 +1,4 @@
-import { isTauri } from "../platform";
+import { isTauri } from "../platform.js";
 
 let _isNode: boolean | null = null;
 function isNode(): boolean {

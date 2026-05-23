@@ -1,4 +1,4 @@
-import type { Tool } from "../llm/types";
+import type { Tool } from "../llm/types.js";
 
 export interface ToolDefinition {
   schema: Tool;

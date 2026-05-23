@@ -1,6 +1,6 @@
-import type { LLMProvider, ChatMessage, ToolCall } from "../llm/types";
-import { toolRegistry } from "../tools/registry";
-import { PermissionManager } from "./permissions";
+import type { LLMProvider, ChatMessage, ToolCall } from "../llm/types.js";
+import { toolRegistry } from "../tools/registry.js";
+import { PermissionManager } from "./permissions.js";
 
 export interface AgentCallbacks {
   onToken: (token: string) => void;

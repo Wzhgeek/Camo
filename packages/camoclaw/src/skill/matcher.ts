@@ -1,4 +1,4 @@
-import type { Skill } from "./skillService";
+import type { Skill } from "./skillService.js";
 
 export function matchSkill(userMessage: string, skills: Skill[]): Skill | undefined {
   const lower = userMessage.toLowerCase();

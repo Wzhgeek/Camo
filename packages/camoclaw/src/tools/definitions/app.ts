@@ -1,4 +1,4 @@
-import { toolRegistry } from "../registry";
+import { toolRegistry } from "../registry.js";
 
 /** Callbacks that the host application provides for app-level tools */
 export interface AppToolCallbacks {

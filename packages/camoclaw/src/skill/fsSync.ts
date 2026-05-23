@@ -1,6 +1,6 @@
-import { isTauri } from "../platform";
-import { skillService, type Skill } from "./skillService";
-import { parseSkillMarkdown, serializeSkillMarkdown, type SkillFrontmatter } from "./parser";
+import { isTauri } from "../platform.js";
+import { skillService, type Skill } from "./skillService.js";
+import { parseSkillMarkdown, serializeSkillMarkdown, type SkillFrontmatter } from "./parser.js";
 
 const SKILL_MD = "SKILL.md";
 const META_FILE = ".camoclaw.json";

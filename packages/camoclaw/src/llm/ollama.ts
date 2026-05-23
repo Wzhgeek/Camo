@@ -1,4 +1,4 @@
-import type { ChatMessage, LLMProvider, StreamCallbacks, Tool, ToolCall } from "./types";
+import type { ChatMessage, LLMProvider, StreamCallbacks, Tool, ToolCall } from "./types.js";
 
 interface OllamaToolCall {
   id?: string;

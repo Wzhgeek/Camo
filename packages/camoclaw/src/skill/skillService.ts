@@ -1,4 +1,4 @@
-import { getBuiltinSkills } from "./builtin";
+import { getBuiltinSkills } from "./builtin.js";
 
 export interface Skill {
   id: string;

@@ -1,5 +1,5 @@
-import { toolRegistry } from "../registry";
-import { skillService } from "../../skill/skillService";
+import { toolRegistry } from "../registry.js";
+import { skillService } from "../../skill/skillService.js";
 
 let activateSkillFn: ((id: string) => void) | null = null;
 export function setActivateSkillFn(fn: (id: string) => void): void {

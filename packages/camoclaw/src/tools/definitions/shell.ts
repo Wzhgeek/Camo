@@ -1,5 +1,5 @@
-import { toolRegistry } from "../registry";
-import { invokePortal } from "../portal";
+import { toolRegistry } from "../registry.js";
+import { invokePortal } from "../portal.js";
 
 function registerShellTools(): void {
   toolRegistry.register({

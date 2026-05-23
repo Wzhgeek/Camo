@@ -1,41 +1,30 @@
 {
   "name": "camoclaw",
-  "version": "0.1.0",
-  "description": "Agent loop, skill system, and tool calling for LLM-powered desktop assistants. Framework-agnostic core.",
+  "version": "0.2.3",
+  "description": "CLI AI assistant with tool calling and skill system. Like Claude Code for any LLM.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "camoclaw": "bin/camo.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./skill": {
-      "types": "./dist/skill/index.d.ts",
-      "import": "./dist/skill/index.js"
-    },
-    "./agent": {
-      "types": "./dist/agent/index.d.ts",
-      "import": "./dist/agent/index.js"
-    },
-    "./tools": {
-      "types": "./dist/tools/index.d.ts",
-      "import": "./dist/tools/index.js"
-    },
-    "./llm": {
-      "types": "./dist/llm/index.d.ts",
-      "import": "./dist/llm/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "keywords": [
     "llm",
     "agent",
     "tool-calling",
     "skill",
-    "desktop-assistant"
+    "cli",
+    "ai-assistant"
   ],
   "license": "MIT",
   "repository": {
@@ -49,7 +38,15 @@
     "prepublishOnly": "tsc"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/blessed": "^0.1.27",
     "@types/node": "^25.9.1",
     "typescript": "^5.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "chalk": "^5.6.2",
+    "marked": "^18.0.4",
+    "neo-blessed": "^0.2.0"
   }
 }
