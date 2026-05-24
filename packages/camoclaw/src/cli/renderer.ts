@@ -61,11 +61,7 @@ export function ellipsize(text: string, width: number): string {
 
 export function camoPixelLogo(): string {
   return [
-    "     .######.     ",
-    "   .##########.   ",
-    "  ###  ##  ###   ",
-    "  ############   ",
-    "    '##  ##'     ",
+    "{magenta-fg}▛▀▜{/magenta-fg} {bold}{magenta-fg}CamoClaw{/magenta-fg}{/bold} {#8b949e-fg}terminal agent{/#8b949e-fg}",
   ].join("\n");
 }
 
@@ -73,11 +69,10 @@ export function welcomeContent(model: string, skill: string, workspace = process
   return [
     camoPixelLogo(),
     "",
-    "CamoClaw terminal agent",
-    "Welcome back! 固定输入区已就绪。",
-    `model ${model}  skill ${skill}`,
-    `workspace ${workspace}`,
-    "输入 /help 查看命令，输入自然语言开始工作。",
+    `{#8b949e-fg}cwd{/#8b949e-fg}   ${workspace}`,
+    `{#8b949e-fg}model{/#8b949e-fg} {cyan-fg}${model}{/cyan-fg}   {#8b949e-fg}skill{/#8b949e-fg} ${skill || "通用助手"}`,
+    "",
+    `{#8b949e-fg}Type{/} {cyan-fg}/mode{/cyan-fg} {#8b949e-fg}or{/} {cyan-fg}/model{/cyan-fg} {#8b949e-fg}to choose. Start typing to work.{/#8b949e-fg}`,
   ].join("\n");
 }
 
@@ -99,13 +94,32 @@ export function trustContent(workspace = process.cwd()): string {
 export function botPrefix(): string { return "✻ "; }
 export function userPrefix(): string { return "› "; }
 
-export function toolStart(name: string): string {
-  return `⎿ ${name} `;
+function compactJson(text: string, width = 96): string {
+  try {
+    const parsed = JSON.parse(text);
+    return ellipsize(JSON.stringify(parsed), width);
+  } catch {
+    return ellipsize(text, width);
+  }
+}
+
+export function toolStart(name: string, args = ""): string {
+  const suffix = args ? ` {#8b949e-fg}${compactJson(args)}{/#8b949e-fg}` : "";
+  return `{#8b949e-fg}╭─{/#8b949e-fg} {cyan-fg}${name}{/cyan-fg}${suffix}`;
 }
 
 export function toolResult(text: string): string {
-  const short = text.length > 240 ? text.slice(0, 237) + "..." : text;
-  return short.split("\n")[0] || "(无输出)";
+  const plain = stripTags(text).trim();
+  if (!plain) return `{#8b949e-fg}╰─{/#8b949e-fg} {green-fg}done{/green-fg} {#8b949e-fg}(无输出){/#8b949e-fg}`;
+  const lines = plain.split("\n");
+  const firstMeaningful = lines.find(line => line.trim() && !/^(STDOUT|STDERR):\s*$/.test(line.trim())) ?? lines[0];
+  const suffix = lines.length > 1 ? ` {#8b949e-fg}+${lines.length - 1} lines{/#8b949e-fg}` : "";
+  return `{#8b949e-fg}╰─{/#8b949e-fg} {green-fg}done{/green-fg} {#8b949e-fg}${ellipsize(firstMeaningful, 110)}{/#8b949e-fg}${suffix}`;
+}
+
+export function toolHiddenSummary(count: number, resultLines: number): string {
+  const output = resultLines > 0 ? ` · ${resultLines} output lines` : "";
+  return `{#8b949e-fg}╰─ ${count} tool ${count === 1 ? "call" : "calls"} collapsed${output} · Ctrl+O 展开{/#8b949e-fg}`;
 }
 
 export function statusLine(model: string, skill: string, mode: string, tokens: number, status: AppStatus): string {
@@ -123,27 +137,82 @@ export function confirmHint(message: string): string {
   return `⚠ ${message}`;
 }
 
+function padDisplay(text: string, width: number): string {
+  const current = displayWidth(text);
+  if (current >= width) return text;
+  return text + " ".repeat(width - current);
+}
+
+function wrapDisplay(text: string, width: number): string[] {
+  const clean = stripTags(text).replace(/`([^`]+)`/g, "$1");
+  const words = clean.split(/(\s+)/);
+  const lines: string[] = [];
+  let line = "";
+  for (const part of words) {
+    if (!part) continue;
+    if (displayWidth(line + part) <= width) {
+      line += part;
+      continue;
+    }
+    if (line.trim()) lines.push(line.trimEnd());
+    line = "";
+    for (const char of Array.from(part.trimStart())) {
+      if (displayWidth(line + char) > width && line) {
+        lines.push(line);
+        line = "";
+      }
+      line += char;
+    }
+  }
+  if (line.trim() || lines.length === 0) lines.push(line.trimEnd());
+  return lines;
+}
+
 /** Render Markdown table to aligned text */
 function renderTable(lines: string[]): string {
-  const rows = lines.map(l => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim()));
+  const rows = lines.map(l => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim().replace(/`([^`]+)`/g, "$1")));
   const cols = rows[0].length;
-  const widths = new Array(cols).fill(3);
+  const widths = new Array(cols).fill(6);
   for (const row of rows) {
     for (let i = 0; i < cols; i++) {
-      widths[i] = Math.max(widths[i], stripTags(row[i] || "").length);
+      widths[i] = Math.max(widths[i], Math.min(42, displayWidth(row[i] || "")));
     }
   }
+  const maxWidth = 118;
+  const borderWidth = cols * 3 + 1;
+  while (widths.reduce((a, b) => a + b, 0) + borderWidth > maxWidth) {
+    let idx = 0;
+    for (let i = 1; i < widths.length; i++) {
+      if (widths[i] > widths[idx]) idx = i;
+    }
+    if (widths[idx] <= 12) break;
+    widths[idx]--;
+  }
+
+  const border = (left: string, mid: string, right: string) =>
+    `{#8b949e-fg}${left}${widths.map(w => "─".repeat(w + 2)).join(mid)}${right}{/#8b949e-fg}`;
+  const renderRow = (row: string[], header = false): string[] => {
+    const wrapped = widths.map((w, i) => wrapDisplay(row[i] || "", w));
+    const height = Math.max(...wrapped.map(cell => cell.length));
+    const out: string[] = [];
+    for (let line = 0; line < height; line++) {
+      const cells = widths.map((w, i) => {
+        const content = padDisplay(wrapped[i][line] || "", w);
+        return header ? `{bold}${content}{/bold}` : content;
+      });
+      out.push(`{#8b949e-fg}│{/#8b949e-fg} ${cells.join(" {#8b949e-fg}│{/#8b949e-fg} ")} {#8b949e-fg}│{/#8b949e-fg}`);
+    }
+    return out;
+  };
+
   const out: string[] = [];
-  for (let r = 0; r < rows.length; r++) {
-    const cells = rows[r].map((c, i) => (c || "").padEnd(widths[i]));
-    const line = "│ " + cells.join(" │ ") + " │";
-    if (r === 0) {
-      out.push(`{bold}${line}{/bold}`);
-      out.push("{#555-fg}" + "├" + widths.map(w => "─".repeat(w + 2)).join("┼") + "┤{/#555-fg}");
-    } else {
-      out.push(line);
-    }
+  out.push(border("┌", "┬", "┐"));
+  out.push(...renderRow(rows[0], true));
+  out.push(border("├", "┼", "┤"));
+  for (let r = 1; r < rows.length; r++) {
+    out.push(...renderRow(rows[r]));
   }
+  out.push(border("└", "┴", "┘"));
   return out.join("\n");
 }
 
@@ -204,18 +273,31 @@ export function getContextWindow(model: string): number {
   return 128000; // default
 }
 
+function formatUserQuestion(content: string): string {
+  const lines = stripTags(content).split("\n");
+  const maxWidth = Math.min(72, Math.max(16, ...lines.map(displayWidth), displayWidth("You")));
+  const top = `{magenta-fg}╭─ You ${"─".repeat(Math.max(0, maxWidth - 5))}╮{/magenta-fg}`;
+  const body = lines.map(line => {
+    const pad = " ".repeat(Math.max(0, maxWidth - displayWidth(line)));
+    return `{magenta-fg}│{/magenta-fg} ${line}${pad} {magenta-fg}│{/magenta-fg}`;
+  });
+  const bottom = `{magenta-fg}╰${"─".repeat(maxWidth + 2)}╯{/magenta-fg}`;
+  return [top, ...body, bottom].join("\n");
+}
+
 export function formatEvent(event: ConversationEvent): string {
+  if (event.raw) return event.content;
   switch (event.type) {
     case "user":
-      return `{magenta-fg}▸{/magenta-fg} ${event.content}\n  {magenta-fg}${"─".repeat(32)}{/magenta-fg}`;
+      return formatUserQuestion(event.content);
     case "assistant":
       return `${botPrefix()}${renderMd(event.content)}`;
     case "thinking":
-      return `${botPrefix()}${event.content}`;
+      return `{#8b949e-fg}${botPrefix()}${event.content}{/#8b949e-fg}`;
     case "tool-start":
-      return `  ${toolStart(event.title || "tool")}${event.content}`;
+      return `  ${toolStart(event.title || "tool", event.content)}`;
     case "tool-result":
-      return `     ${toolResult(event.content)}`;
+      return `  ${toolResult(event.content)}`;
     case "error":
       return `✗ ${event.content}`;
     case "system":
@@ -231,6 +313,8 @@ export function error(msg: string): string { return `✗ ${msg}`; }
 
 // 上下文进度条
 export function progressBar(used: number, max: number): string {
+  if (!Number.isFinite(max) || max <= 0) max = 128000;
+  if (!Number.isFinite(used) || used < 0) used = 0;
   const pct = Math.min(100, Math.round((used / max) * 100));
   const w = 8;
   const filled = Math.round((pct / 100) * w);

@@ -49,7 +49,7 @@ register("help", (_, ctx) => {
 ${info("可用命令:")}
 
   会话:   /clear    /undo    /reset    /save    /sessions
-  模式:   /mode chat|agent|shell
+  模式:   /mode plan|agent|ask|chat|shell
   模型:   /model [name|list]
   配置:   /config [set key value|path]
   技能:   /skills [browse|install slug|remove name]
@@ -65,31 +65,35 @@ register("mode", (args, ctx) => {
     ctx.print(info(`当前模式: ${ctx.state.mode}`));
     return;
   }
-  const m = args[0] as "chat" | "agent" | "shell";
-  if (["chat", "agent", "shell"].includes(m)) {
+  const m = args[0] as "chat" | "agent" | "shell" | "plan" | "ask";
+  if (["chat", "agent", "shell", "plan", "ask"].includes(m)) {
     ctx.state.setMode(m);
     ctx.print(success(`已切换到 ${m} 模式`));
   } else {
-    ctx.print(warn(`无效模式: ${m}。可选: chat / agent / shell`));
+    ctx.print(warn(`无效模式: ${m}。可选: plan / agent / ask / chat / shell`));
   }
 });
 
 // ── Model ──
 register("model", (args, ctx) => {
   if (!args.length) {
-    ctx.print(info(`当前模型: ${ctx.config.model}`));
+    ctx.print(info(`当前模型: ${ctx.state.model || ctx.config.model}`));
     return;
   }
   if (args[0] === "list") {
     ctx.print(info("DeepSeek: deepseek-v4-flash, deepseek-v4-pro"));
-    ctx.print(info("通过 /config set model <name> 修改"));
+    ctx.print(info("用法: /model <name>，例如 /model deepseek-v4-pro"));
     return;
   }
-  ctx.config.model = args[0];
+  const model = args.join(" ").trim();
+  if (!model) {
+    ctx.print(warn("用法: /model <name>"));
+    return;
+  }
+  ctx.config.model = model;
   saveConfig(ctx.config);
-  ctx.refreshConfig();
-  ctx.state.setModel(ctx.config.model);
-  ctx.print(success(`模型已切换为 ${ctx.config.model}`));
+  ctx.state.setModel(model);
+  ctx.print(success(`模型已切换为 ${model}`));
 });
 
 // ── Config ──
@@ -105,10 +109,13 @@ register("config", (args, ctx) => {
   if (args[0] === "path") {
     ctx.print(info(getConfigPath()));
   } else if (args[0] === "set" && args[1] && args[2]) {
-    (ctx.config as unknown as Record<string, string>)[args[1]] = args[2];
+    const key = args[1];
+    const value = args.slice(2).join(" ");
+    (ctx.config as unknown as Record<string, string>)[key] = value;
     saveConfig(ctx.config);
+    if (key === "model") ctx.state.setModel(value);
     ctx.refreshConfig();
-    ctx.print(success(`${args[1]} 已更新`));
+    ctx.print(success(`${key} 已更新为 ${value}`));
   } else {
     ctx.print(warn("用法: /config set <key> <value>"));
   }
@@ -198,7 +205,14 @@ export function getCustomSystemPrompt(): string { return customSystemPrompt; }
 register("clear", (_, ctx) => { ctx.history.clear(); ctx.print(success("对话已清除")); });
 register("undo", (_, ctx) => { ctx.history.undoLast(); ctx.print(success("已撤销")); });
 register("reset", (_, ctx) => { ctx.history.clear(); customSystemPrompt = ""; ctx.print(success("会话已重置")); });
-register("compact", (_, ctx) => { ctx.print(info("上下文已优化")); });
+register("compact", (_, ctx) => {
+  const result = ctx.history.compact();
+  if (result.before === result.after) {
+    ctx.print(info(`上下文无需压缩（当前 ${result.after} 条消息）`));
+    return;
+  }
+  ctx.print(success(`上下文已压缩：${result.before} 条 → ${result.after} 条`));
+});
 register("sessions", (_, ctx) => {
   const list = sessionManager.list();
   if (!list.length) { ctx.print(info("无保存的会话")); return; }
@@ -218,7 +232,7 @@ register("save", (args, ctx) => {
 register("status", (_, ctx) => {
   ctx.print(info(`模式: ${ctx.state.mode} | 模型: ${ctx.config.model} | Skill: ${ctx.state.activeSkill} | tokens: ~${ctx.history.getTokenEstimate()}`));
 });
-register("version", (_, ctx) => { ctx.print("CamoClaw v0.1.0"); });
+register("version", (_, ctx) => { ctx.print("CamoClaw v0.2.3"); });
 
 // ── Permissions ──
 register("permissions", (args, ctx) => {
@@ -239,6 +253,8 @@ register("permissions", (args, ctx) => {
     } else {
       ctx.print(warn("用法: /permissions [allow|deny|ask] <pattern>"));
     }
+  } else {
+    ctx.print(warn("用法: /permissions [allow|deny|ask] <pattern>"));
   }
 });
 
@@ -260,7 +276,7 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return false;
 
-  const parts = trimmed.slice(1).split(/\s+/);
+  const parts = parseCommandArgs(trimmed.slice(1));
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1);
 
@@ -272,4 +288,41 @@ export async function handleCommand(input: string, ctx: CommandContext): Promise
     ctx.print(warn(`未知命令: /${cmd}。输入 /help 查看帮助。`));
   }
   return true;
+}
+
+function parseCommandArgs(input: string): string[] {
+  const out: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  for (const char of input) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        out.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current) out.push(current);
+  return out;
 }

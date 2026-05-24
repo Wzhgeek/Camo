@@ -63,6 +63,37 @@ export class History {
     return 0;
   }
 
+  compact(keepRecent = 8): { before: number; after: number } {
+    const before = this.messages.length;
+    if (before <= keepRecent + 2) return { before, after: before };
+
+    const older = this.messages.slice(0, -keepRecent);
+    const recent = this.messages.slice(-keepRecent);
+    const summaryLines = older
+      .filter(m => m.role === "user" || m.role === "assistant")
+      .slice(-20)
+      .map(m => `${m.role}: ${m.content.replace(/\s+/g, " ").slice(0, 220)}`);
+    const summary: CLIChatMessage = {
+      role: "system",
+      content: [
+        "以下是已压缩的早期上下文摘要，供后续对话参考：",
+        ...summaryLines,
+      ].join("\n"),
+    };
+
+    this.messages = [summary, ...recent];
+    sessionManager.clearMessages(this.sessionId);
+    for (const m of this.messages) {
+      sessionManager.appendMessage(
+        this.sessionId,
+        m.role,
+        m.content,
+        m.tool_calls ? JSON.stringify(m.tool_calls) : undefined,
+      );
+    }
+    return { before, after: this.messages.length };
+  }
+
   getTokenEstimate(): number {
     let total = 0;
     for (const m of this.messages) {

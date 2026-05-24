@@ -11,6 +11,13 @@ export interface AgentCallbacks {
   onToolConfirmRequest?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
 }
 
+export class ToolPermissionDeniedError extends Error {
+  constructor(public readonly toolName: string) {
+    super(`用户拒绝了 "${toolName}" 的执行请求`);
+    this.name = "ToolPermissionDeniedError";
+  }
+}
+
 export interface AgentContext {
   systemPrompt: string;
   history: ChatMessage[];
@@ -107,14 +114,14 @@ export class AgentLoop {
         } catch { /* invalid JSON, proceed with empty args */ }
 
         // Permission check
-        const action = this.permissions.check(toolName);
+        const action = this.permissions.check(toolName, args);
         let result: string;
         if (action === "deny") {
-          result = `Error: 工具 "${toolName}" 已被用户禁用`;
+          throw new ToolPermissionDeniedError(toolName);
         } else if (action === "ask" && this.callbacks.onToolConfirmRequest) {
           const allowed = await this.callbacks.onToolConfirmRequest(toolName, args);
           if (!allowed) {
-            result = `Error: 用户拒绝了 "${toolName}" 的执行请求`;
+            throw new ToolPermissionDeniedError(toolName);
           } else {
             result = await toolRegistry.execute(toolName, args);
           }
