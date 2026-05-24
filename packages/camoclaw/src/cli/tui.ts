@@ -440,7 +440,9 @@ function submitComposer(runtime: TuiRuntime, ctx: CommandContext) {
   runtime.pasteBlocks.clear();
   updateComposerLayout(runtime);
   hideCommandPopup(runtime);
-  void handleLine(runtime, ctx, raw);
+  // Defer to next tick so deferred renders from clearValue/updateComposerLayout
+  // finish before the popup is created, avoiding render conflicts.
+  setTimeout(() => handleLine(runtime, ctx, raw), 0);
 }
 
 function showToolConfirm(runtime: TuiRuntime, toolName: string, toolArgs?: Record<string, unknown>, allowAlways = true): Promise<ConfirmResult> {
@@ -521,7 +523,6 @@ function chooseMode(runtime: TuiRuntime): Promise<AppMode | null> {
   runtime.composerState = "confirming";
   runtime.confirmMode = "tool";
   runtime.confirmMessage = "选择模式 · ↑↓ 移动 · Enter 确认 · Esc 取消";
-  queueRender(runtime);
 
   return new Promise((resolve) => {
     selectPopup(runtime, MODE_CHOICES, {
@@ -554,7 +555,6 @@ function chooseModel(runtime: TuiRuntime, ctx: CommandContext): Promise<string |
   runtime.composerState = "confirming";
   runtime.confirmMode = "tool";
   runtime.confirmMessage = "选择模型 · ↑↓ 移动 · Enter 确认 · Esc 取消";
-  queueRender(runtime);
 
   return new Promise((resolve) => {
     selectPopup(runtime, models, {
@@ -1130,7 +1130,18 @@ async function handleLine(runtime: TuiRuntime, ctx: CommandContext, line: string
 
 async function handleInteractiveCommand(runtime: TuiRuntime, ctx: CommandContext, trimmed: string): Promise<boolean> {
   const command = trimmed.slice(1).trim();
-  if (command === "mode" || command.startsWith("mode ")) {
+  const parts = command.split(/\s+/);
+  const cmd = parts[0];
+  const arg = parts.slice(1).join(" ").trim();
+  if (cmd === "mode") {
+    // Direct switch if valid mode name provided
+    const directMode = MODE_CHOICES.find(c => c.mode === arg || c.label === arg);
+    if (directMode) {
+      runtime.state.setMode(directMode.mode);
+      appendSystem(runtime, `已切换到 ${MODE_LABELS[directMode.mode]}`);
+      return true;
+    }
+    // No arg or invalid: show popup
     const selected = await chooseMode(runtime);
     if (!selected) {
       appendSystem(runtime, "已取消模式切换");
@@ -1141,7 +1152,26 @@ async function handleInteractiveCommand(runtime: TuiRuntime, ctx: CommandContext
     return true;
   }
 
-  if (command === "model" || command === "model list" || command.startsWith("model ")) {
+  if (cmd === "model") {
+    // "model list" → show available models as text
+    if (arg === "list") {
+      const providerModels = MODEL_OPTIONS[ctx.config.provider] ?? [];
+      if (providerModels.length) {
+        appendSystem(runtime, `${ctx.config.provider}: ${providerModels.join(" / ")}`);
+      } else {
+        appendSystem(runtime, "用法: /model <name>，或 /model 弹出选择窗");
+      }
+      return true;
+    }
+    // Direct switch if model name provided
+    if (arg) {
+      ctx.config.model = arg;
+      saveConfig(ctx.config);
+      ctx.state.setModel(arg);
+      appendSystem(runtime, `模型已切换为 ${arg}`);
+      return true;
+    }
+    // No arg: show popup
     const selected = await chooseModel(runtime, ctx);
     if (!selected) {
       appendSystem(runtime, "已取消模型切换");
